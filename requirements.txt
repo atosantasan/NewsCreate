@@ -16,3 +16,4 @@ webdriver_manager
 fastapi==0.110.0
 uvicorn==0.27.1
 psutil==5.9.8
+tenacity==8.2.3
