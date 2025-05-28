@@ -1,49 +1,53 @@
 import google.generativeai as genai
 import os
-from ..utils.logger import get_logger
+import logging
+from typing import Optional
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 class GeminiWriter:
-    def __init__(self):
-        self.api_key = os.getenv('GEMINI_API_KEY')
+    def __init__(self, api_key: Optional[str] = None):
+        self.api_key = api_key or os.getenv("GEMINI_API_KEY")
         if not self.api_key:
-            raise ValueError("GEMINI_API_KEY is not set")
+            raise ValueError("GEMINI_API_KEY is required")
+        
         genai.configure(api_key=self.api_key)
-        self.model = genai.GenerativeModel('gemini-pro')
-    
-    def generate_article(self, title, content):
+        self.model = genai.GenerativeModel("gemini-2.0-flash")
+        
+    def generate_article(self, title: str, content: str) -> str:
         """
-        記事を生成します。
+        ニュース情報から記事を生成する
         
         Args:
-            title (str): 記事のタイトル
-            content (str): 元となるコンテンツ
+            title (str): ニュースのタイトル
+            content (str): ニュースの本文
             
         Returns:
-            str: 生成された記事
+            str: 生成された記事本文
         """
+        prompt = f"""
+        以下のニュース情報をもとに、Note投稿に適した自然な日本語の記事を作成してください。
+
+        # 制約条件：
+        - 読みやすく、簡潔に。
+        - 序文、中盤、結論を含む構成。
+        - タイトルに合った内容を維持する。
+
+        # ニュースタイトル：
+        {title}
+
+        # ニュース本文：
+        {content}
+
+        # 出力形式：
+        Noteに投稿する用のテキストのみ出力してください。
+        """
+
         try:
-            prompt = f"""
-            以下のタイトルとコンテンツを元に、記事を生成してください。
-            
-            タイトル: {title}
-            
-            元コンテンツ:
-            {content}
-            
-            以下の形式で記事を生成してください：
-            1. 導入部（背景説明）
-            2. 本文（詳細な説明）
-            3. 結論（まとめ）
-            """
-            
+            logger.info(f"Generating article for title: {title}")
             response = self.model.generate_content(prompt)
-            generated_article = response.text
-            
-            logger.info(f"記事の生成に成功しました: {title}")
-            return generated_article
-            
+            logger.info("Article generated successfully")
+            return response.text
         except Exception as e:
-            logger.error(f"記事の生成中にエラーが発生しました: {str(e)}")
+            logger.error(f"Failed to generate article: {str(e)}")
             raise
