@@ -7,7 +7,7 @@ from selenium.common.exceptions import TimeoutException, WebDriverException
 import time
 import os
 import logging
-from typing import Optional
+from typing import Optional, Dict, Any
 from dotenv import load_dotenv
 import base64
 from datetime import datetime
@@ -37,20 +37,20 @@ class NotePoster:
         self.wait = None
         
     def _save_screenshot(self, prefix: str):
-        """スクリーンショットを保存する"""
+        """スクリーンショットをBase64エンコードしてログに出力"""
         try:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"{prefix}_{timestamp}.png"
             
-            # スクリーンショットを取得
-            screenshot = self.driver.get_screenshot_as_png()
+            # スクリーンショットを取得してBase64エンコード
+            screenshot = self.driver.get_screenshot_as_base64()
             
-            # ファイルに保存
-            with open(filename, 'wb') as f:
-                f.write(screenshot)
+            # ログに出力（Base64文字列の最初の100文字のみ表示）
+            logger.info(f"Screenshot {prefix}_{timestamp} (Base64 preview): {screenshot[:100]}...")
             
-            logger.info(f"Screenshot saved as {filename}")
-            return filename
+            # 完全なBase64文字列を別のログエントリとして出力
+            logger.debug(f"Full screenshot {prefix}_{timestamp} (Base64): {screenshot}")
+            
+            return screenshot
         except Exception as e:
             logger.error(f"Failed to save screenshot: {str(e)}")
             return None
@@ -162,3 +162,54 @@ class NotePoster:
         finally:
             if self.driver:
                 self.driver.quit()
+
+    def _check_critical_elements(self) -> Dict[str, bool]:
+        """重要な要素の状態を確認"""
+        try:
+            elements_status = {
+                'email_field': bool(self.driver.find_elements(By.ID, "email")),
+                'password_field': bool(self.driver.find_elements(By.ID, "password")),
+                'login_button': bool(self.driver.find_elements(By.XPATH, '//button[contains(.,"ログイン")]'))
+            }
+            
+            for element_name, is_present in elements_status.items():
+                logger.info(f"{element_name}: {'Found' if is_present else 'Not found'}")
+                
+            return elements_status
+        except Exception as e:
+            logger.error(f"Failed to check elements: {str(e)}")
+            return {}
+            
+    def _collect_error_info(self, prefix: str) -> Dict[str, Any]:
+        """エラー時の情報を収集"""
+        try:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            error_info = {
+                'timestamp': timestamp,
+                'url': self.driver.current_url,
+                'title': self.driver.title,
+                'error_type': prefix,
+                'elements_status': self._check_critical_elements()
+            }
+            
+            # エラー情報のログ出力
+            logger.error(f"Error occurred at URL: {error_info['url']}")
+            logger.error(f"Page title: {error_info['title']}")
+            logger.error(f"Error type: {error_info['error_type']}")
+            logger.error(f"Elements status: {error_info['elements_status']}")
+            
+            return error_info
+        except Exception as e:
+            logger.error(f"Failed to collect error information: {str(e)}")
+            return {}
+            
+    def _handle_error(self, error_type: str, error: Exception) -> Dict[str, Any]:
+        """エラー処理の一元化"""
+        try:
+            error_info = self._collect_error_info(error_type)
+            error_info['error_message'] = str(error)
+            return error_info
+        except Exception as e:
+            logger.error(f"Failed to handle error: {str(e)}")
+            return {}
