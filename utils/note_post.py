@@ -12,6 +12,8 @@ from dotenv import load_dotenv
 import base64
 from datetime import datetime
 import gc
+import signal
+import sys
 
 # ログ設定を追加
 logging.basicConfig(
@@ -40,6 +42,28 @@ class NotePoster:
             
         self.driver = None
         self.wait = None
+        self._setup_signal_handlers()
+        
+    def _setup_signal_handlers(self):
+        """シグナルハンドラの設定"""
+        def signal_handler(signum, frame):
+            logger.info("Received signal to terminate")
+            self.cleanup()
+            sys.exit(0)
+            
+        signal.signal(signal.SIGTERM, signal_handler)
+        signal.signal(signal.SIGINT, signal_handler)
+        
+    def cleanup(self):
+        """リソースのクリーンアップ"""
+        if self.driver:
+            try:
+                self.driver.quit()
+            except Exception as e:
+                logger.error(f"Error during driver cleanup: {str(e)}")
+            finally:
+                self.driver = None
+        gc.collect()
         
     def _collect_error_info(self) -> Dict[str, Any]:
         """エラー情報を収集"""
@@ -90,17 +114,22 @@ class NotePoster:
             options.add_argument("--password-store=basic")
             options.add_argument("--use-mock-keychain")
             
+            # メモリ制限の設定
+            options.add_argument("--js-flags=--max-old-space-size=512")
+            options.add_argument("--memory-pressure-off")
+            options.add_argument("--disable-software-rasterizer")
+            
             self.driver = webdriver.Chrome(options=options)
-            self.wait = WebDriverWait(self.driver, 15)  # タイムアウトを15秒に調整
+            self.wait = WebDriverWait(self.driver, 10)  # タイムアウトを10秒に短縮
         except Exception as e:
             logger.error(f"Failed to setup Chrome driver: {str(e)}")
             raise
 
-    def _wait_for_page_load(self, timeout: int = 5):
+    def _wait_for_page_load(self, timeout: int = 3):
         """ページの読み込み完了を待機"""
         try:
             self.driver.execute_script("return document.readyState") == "complete"
-            time.sleep(1)  # 待機時間を短縮
+            time.sleep(0.5)  # 待機時間をさらに短縮
         except Exception as e:
             logger.error(f"Page load wait failed: {str(e)}")
 
@@ -136,12 +165,12 @@ class NotePoster:
             email_input = self.wait.until(EC.presence_of_element_located((By.ID, "email")))
             email_input.clear()
             email_input.send_keys(self.email)
-            time.sleep(0.5)  # 待機時間を短縮
+            time.sleep(0.3)  # 待機時間をさらに短縮
             
             password_input = self.wait.until(EC.presence_of_element_located((By.ID, "password")))
             password_input.clear()
             password_input.send_keys(self.password)
-            time.sleep(0.5)  # 待機時間を短縮
+            time.sleep(0.3)  # 待機時間をさらに短縮
             
             # ログインボタンのクリック
             login_button = self.wait.until(EC.element_to_be_clickable((By.XPATH, '//button[contains(.,"ログイン")]')))
@@ -202,23 +231,23 @@ class NotePoster:
             title_input = self.wait.until(EC.presence_of_element_located((By.XPATH, '//textarea[@placeholder="記事タイトル"]')))
             title_input.clear()
             title_input.send_keys(title)
-            time.sleep(0.5)
+            time.sleep(0.3)
             
             body_input = self.wait.until(EC.presence_of_element_located((By.XPATH, '//div[@contenteditable="true" and contains(@class, "ProseMirror")]')))
             body_input.click()
             body_input.send_keys(article_body)
-            time.sleep(0.5)
+            time.sleep(0.3)
             
             # 公開処理
             publish_button = self.wait.until(EC.element_to_be_clickable((By.XPATH, '//span[contains(text(), "公開に進む")]')))
             publish_button.click()
-            time.sleep(1)
+            time.sleep(0.5)
             
             post_button = self.wait.until(EC.element_to_be_clickable((By.XPATH, '//span[contains(text(), "投稿する")]')))
             post_button.click()
             
             # 投稿完了の待機
-            time.sleep(3)  # 待機時間を短縮
+            time.sleep(2)  # 待機時間を短縮
             current_url = self.driver.current_url
             logger.info(f"Article posted successfully: {current_url}")
             
@@ -230,10 +259,7 @@ class NotePoster:
             return None
             
         finally:
-            if self.driver:
-                self.driver.quit()
-                self.driver = None
-            gc.collect()  # メモリの解放を強制
+            self.cleanup()
 
     def _check_critical_elements(self) -> Dict[str, bool]:
         """重要な要素の状態を確認"""
