@@ -11,6 +11,7 @@ from typing import Optional, Dict, Any
 from dotenv import load_dotenv
 import base64
 from datetime import datetime
+import gc
 
 # ログ設定を追加
 logging.basicConfig(
@@ -56,28 +57,50 @@ class NotePoster:
         """Seleniumドライバーの初期化"""
         try:
             options = Options()
-            options.add_argument("--headless=new")  # 新しいヘッドレスモード
+            options.add_argument("--headless=new")
             options.add_argument("--no-sandbox")
             options.add_argument("--disable-dev-shm-usage")
             options.add_argument("--disable-gpu")
             options.add_argument("--disable-features=NetworkService,NetworkServiceInProcess")
             options.add_argument("--window-size=1920,1080")
             options.add_argument("--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-            options.add_argument("--disable-blink-features=AutomationControlled")  # 自動化検出を回避
-            options.add_experimental_option("excludeSwitches", ["enable-automation"])  # 自動化フラグを非表示
-            options.add_experimental_option("useAutomationExtension", False)  # 自動化拡張を無効化
+            options.add_argument("--disable-blink-features=AutomationControlled")
+            options.add_experimental_option("excludeSwitches", ["enable-automation"])
+            options.add_experimental_option("useAutomationExtension", False)
+            
+            # メモリ使用量の最適化
+            options.add_argument("--disable-extensions")
+            options.add_argument("--disable-popup-blocking")
+            options.add_argument("--disable-infobars")
+            options.add_argument("--disable-notifications")
+            options.add_argument("--disable-default-apps")
+            options.add_argument("--disable-sync")
+            options.add_argument("--disable-background-networking")
+            options.add_argument("--disable-background-timer-throttling")
+            options.add_argument("--disable-backgrounding-occluded-windows")
+            options.add_argument("--disable-breakpad")
+            options.add_argument("--disable-component-extensions-with-background-pages")
+            options.add_argument("--disable-features=TranslateUI")
+            options.add_argument("--disable-ipc-flooding-protection")
+            options.add_argument("--disable-renderer-backgrounding")
+            options.add_argument("--enable-features=NetworkService,NetworkServiceInProcess")
+            options.add_argument("--force-color-profile=srgb")
+            options.add_argument("--metrics-recording-only")
+            options.add_argument("--no-first-run")
+            options.add_argument("--password-store=basic")
+            options.add_argument("--use-mock-keychain")
             
             self.driver = webdriver.Chrome(options=options)
-            self.wait = WebDriverWait(self.driver, 20)  # タイムアウトを20秒に延長
+            self.wait = WebDriverWait(self.driver, 15)  # タイムアウトを15秒に調整
         except Exception as e:
             logger.error(f"Failed to setup Chrome driver: {str(e)}")
             raise
 
-    def _wait_for_page_load(self, timeout: int = 10):
+    def _wait_for_page_load(self, timeout: int = 5):
         """ページの読み込み完了を待機"""
         try:
             self.driver.execute_script("return document.readyState") == "complete"
-            time.sleep(2)  # 追加の待機時間
+            time.sleep(1)  # 待機時間を短縮
         except Exception as e:
             logger.error(f"Page load wait failed: {str(e)}")
 
@@ -111,14 +134,14 @@ class NotePoster:
             
             # ログインフォームの入力
             email_input = self.wait.until(EC.presence_of_element_located((By.ID, "email")))
-            email_input.clear()  # 入力フィールドをクリア
+            email_input.clear()
             email_input.send_keys(self.email)
-            time.sleep(1)  # 入力間隔を追加
+            time.sleep(0.5)  # 待機時間を短縮
             
             password_input = self.wait.until(EC.presence_of_element_located((By.ID, "password")))
-            password_input.clear()  # 入力フィールドをクリア
+            password_input.clear()
             password_input.send_keys(self.password)
-            time.sleep(1)  # 入力間隔を追加
+            time.sleep(0.5)  # 待機時間を短縮
             
             # ログインボタンのクリック
             login_button = self.wait.until(EC.element_to_be_clickable((By.XPATH, '//button[contains(.,"ログイン")]')))
@@ -179,23 +202,23 @@ class NotePoster:
             title_input = self.wait.until(EC.presence_of_element_located((By.XPATH, '//textarea[@placeholder="記事タイトル"]')))
             title_input.clear()
             title_input.send_keys(title)
-            time.sleep(1)
+            time.sleep(0.5)
             
             body_input = self.wait.until(EC.presence_of_element_located((By.XPATH, '//div[@contenteditable="true" and contains(@class, "ProseMirror")]')))
             body_input.click()
             body_input.send_keys(article_body)
-            time.sleep(1)
+            time.sleep(0.5)
             
             # 公開処理
             publish_button = self.wait.until(EC.element_to_be_clickable((By.XPATH, '//span[contains(text(), "公開に進む")]')))
             publish_button.click()
-            time.sleep(2)
+            time.sleep(1)
             
             post_button = self.wait.until(EC.element_to_be_clickable((By.XPATH, '//span[contains(text(), "投稿する")]')))
             post_button.click()
             
             # 投稿完了の待機
-            time.sleep(5)  # 待機時間を延長
+            time.sleep(3)  # 待機時間を短縮
             current_url = self.driver.current_url
             logger.info(f"Article posted successfully: {current_url}")
             
@@ -209,6 +232,8 @@ class NotePoster:
         finally:
             if self.driver:
                 self.driver.quit()
+                self.driver = None
+            gc.collect()  # メモリの解放を強制
 
     def _check_critical_elements(self) -> Dict[str, bool]:
         """重要な要素の状態を確認"""
