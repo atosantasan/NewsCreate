@@ -9,6 +9,8 @@ import os
 import logging
 from typing import Optional
 from dotenv import load_dotenv
+import base64
+from datetime import datetime
 
 # ログ設定を追加
 logging.basicConfig(
@@ -34,21 +36,44 @@ class NotePoster:
         self.driver = None
         self.wait = None
         
+    def _save_screenshot(self, prefix: str):
+        """スクリーンショットを保存する"""
+        try:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"{prefix}_{timestamp}.png"
+            
+            # スクリーンショットを取得
+            screenshot = self.driver.get_screenshot_as_png()
+            
+            # ファイルに保存
+            with open(filename, 'wb') as f:
+                f.write(screenshot)
+            
+            logger.info(f"Screenshot saved as {filename}")
+            return filename
+        except Exception as e:
+            logger.error(f"Failed to save screenshot: {str(e)}")
+            return None
+
     def _setup_driver(self):
         """Seleniumドライバーの初期化"""
-        logger.info("Setting up Chrome driver...")
-        options = Options()
-        options.add_argument("--headless")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--disable-gpu")
-        options.add_argument("--disable-features=NetworkService,NetworkServiceInProcess")
-        options.add_argument("--window-size=1920,1080")
-        logger.info("Chrome options configured")
-        self.driver = webdriver.Chrome(options=options)
-        logger.info("Chrome driver initialized successfully")
-        self.wait = WebDriverWait(self.driver, 10)
-        
+        try:
+            logger.info("Setting up Chrome driver...")
+            options = Options()
+            options.add_argument("--headless")
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument("--disable-gpu")
+            options.add_argument("--disable-features=NetworkService,NetworkServiceInProcess")
+            options.add_argument("--window-size=1920,1080")
+            logger.info("Chrome options configured")
+            self.driver = webdriver.Chrome(options=options)
+            logger.info("Chrome driver initialized successfully")
+            self.wait = WebDriverWait(self.driver, 10)
+        except Exception as e:
+            logger.error(f"Failed to setup Chrome driver: {str(e)}")
+            raise
+
     def _login(self):
         """Noteにログイン"""
         try:
@@ -81,15 +106,11 @@ class NotePoster:
             
         except TimeoutException as e:
             logger.error(f"Timeout during login: {str(e)}")
-            if self.driver:
-                self.driver.save_screenshot("note_login_timeout.png")
-                logger.info("Login timeout screenshot saved")
+            self._save_screenshot("login_timeout")
             raise
         except WebDriverException as e:
             logger.error(f"WebDriver error during login: {str(e)}")
-            if self.driver:
-                self.driver.save_screenshot("note_login_error.png")
-                logger.info("Login error screenshot saved")
+            self._save_screenshot("login_error")
             raise
             
     def post_article(self, article_body: str, title: str) -> Optional[str]:
@@ -135,9 +156,7 @@ class NotePoster:
             
         except Exception as e:
             logger.error(f"Failed to post article: {str(e)}")
-            if self.driver:
-                self.driver.save_screenshot("note_error_screenshot.png")
-                logger.info("Error screenshot saved as note_error_screenshot.png")
+            self._save_screenshot("error")
             return None
             
         finally:
