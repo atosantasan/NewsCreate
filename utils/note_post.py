@@ -37,22 +37,30 @@ class NotePoster:
         self.wait = None
         
     def _save_screenshot(self, prefix: str):
-        """スクリーンショットをBase64エンコードしてログに出力"""
+        """エラー情報を収集"""
         try:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             
-            # スクリーンショットを取得してBase64エンコード
-            screenshot = self.driver.get_screenshot_as_base64()
+            # 現在のURLとページタイトルを取得
+            current_url = self.driver.current_url
+            page_title = self.driver.title
             
-            # ログに出力（Base64文字列の最初の100文字のみ表示）
-            logger.info(f"Screenshot {prefix}_{timestamp} (Base64 preview): {screenshot[:100]}...")
+            # エラー情報をログに出力
+            logger.error(f"Error occurred at {timestamp}")
+            logger.error(f"Current URL: {current_url}")
+            logger.error(f"Page title: {page_title}")
             
-            # 完全なBase64文字列を別のログエントリとして出力
-            logger.debug(f"Full screenshot {prefix}_{timestamp} (Base64): {screenshot}")
+            # ページのソースの一部を取得（最初の500文字）
+            page_source = self.driver.page_source[:500]
+            logger.error(f"Page source preview: {page_source}")
             
-            return screenshot
+            return {
+                'timestamp': timestamp,
+                'url': current_url,
+                'title': page_title
+            }
         except Exception as e:
-            logger.error(f"Failed to save screenshot: {str(e)}")
+            logger.error(f"Failed to collect error information: {str(e)}")
             return None
 
     def _setup_driver(self):
@@ -123,12 +131,9 @@ class NotePoster:
                         continue
                 
                 if not success:
-                    # 現在のURLを確認
-                    current_url = self.driver.current_url
-                    logger.error(f"Login failed. Current URL: {current_url}")
-                    # ページのソースを確認
-                    page_source = self.driver.page_source[:1000]  # 最初の1000文字のみ
-                    logger.error(f"Page source preview: {page_source}")
+                    # エラー情報を収集
+                    error_info = self._save_screenshot("login_failed")
+                    logger.error(f"Login failed. Error info: {error_info}")
                     raise TimeoutException("Could not confirm successful login")
             
             logger.info("Successfully logged in to Note")
