@@ -164,26 +164,32 @@ class NotePoster:
         """Noteにログイン（リトライ処理付き）"""
         try:
             logger.info("Attempting to login to Note")
+            logger.info("Navigating to login page...")
             self.driver.get("https://note.com/login")
             self._wait_for_page_load()
+            logger.info("Clearing cookies...")
             self.driver.delete_all_cookies()
             
             # ログインフォームの入力
+            logger.info("Entering email...")
             email_input = self.wait.until(EC.presence_of_element_located((By.ID, "email")))
             email_input.clear()
             email_input.send_keys(self.email)
             time.sleep(0.5)
             
+            logger.info("Entering password...")
             password_input = self.wait.until(EC.presence_of_element_located((By.ID, "password")))
             password_input.clear()
             password_input.send_keys(self.password)
             time.sleep(0.5)
             
             # ログインボタンのクリック
+            logger.info("Clicking login button...")
             login_button = self.wait.until(EC.element_to_be_clickable((By.XPATH, '//button[contains(.,"ログイン")]')))
             login_button.click()
             
             # ログイン完了の待機（複数の要素をチェック）
+            logger.info("Waiting for login completion...")
             try:
                 self.wait.until(EC.presence_of_element_located((By.XPATH, '//div[contains(@class, "note-header")]')))
             except TimeoutException:
