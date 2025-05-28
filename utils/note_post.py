@@ -99,9 +99,38 @@ class NotePoster:
             logger.info("Login button found, clicking...")
             login_button.click()
             
-            # ログイン完了の待機
+            # ログイン完了の待機（複数の要素をチェック）
             logger.info("Waiting for login completion...")
-            self.wait.until(EC.presence_of_element_located((By.XPATH, '//div[contains(@class, "note-header")]')))
+            try:
+                # まずnote-headerを待機
+                self.wait.until(EC.presence_of_element_located((By.XPATH, '//div[contains(@class, "note-header")]')))
+            except TimeoutException:
+                logger.info("note-header not found, checking for other elements...")
+                # 代替の要素をチェック
+                success = False
+                for selector in [
+                    '//div[contains(@class, "note-header")]',
+                    '//div[contains(@class, "note-header__user")]',
+                    '//div[contains(@class, "note-header__menu")]',
+                    '//a[contains(@href, "/mypage")]'
+                ]:
+                    try:
+                        self.wait.until(EC.presence_of_element_located((By.XPATH, selector)))
+                        success = True
+                        logger.info(f"Login confirmed by finding element: {selector}")
+                        break
+                    except TimeoutException:
+                        continue
+                
+                if not success:
+                    # 現在のURLを確認
+                    current_url = self.driver.current_url
+                    logger.error(f"Login failed. Current URL: {current_url}")
+                    # ページのソースを確認
+                    page_source = self.driver.page_source[:1000]  # 最初の1000文字のみ
+                    logger.error(f"Page source preview: {page_source}")
+                    raise TimeoutException("Could not confirm successful login")
+            
             logger.info("Successfully logged in to Note")
             
         except TimeoutException as e:
