@@ -2,8 +2,8 @@ from flask import Flask, jsonify
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_cors import CORS
-from .config import config
-from .utils.logger import setup_logger
+from config import config
+from utils.logger import setup_logger
 import logging
 
 logger = logging.getLogger(__name__)
