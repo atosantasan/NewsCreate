@@ -10,6 +10,16 @@ import logging
 from typing import Optional
 from dotenv import load_dotenv
 
+# ログ設定を追加
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('note_poster.log'),
+        logging.StreamHandler()
+    ]
+)
+
 logger = logging.getLogger(__name__)
 
 class NotePoster:
