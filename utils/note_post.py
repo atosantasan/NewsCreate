@@ -230,8 +230,14 @@ class NotePoster:
             options.add_argument("--force-device-scale-factor=1") # スケーリングを強制しない
             options.add_argument("--high-dpi-support=1") # DPIサポートを有効に
 
+            # 自動化検出対策
+            options.add_argument("--disable-blink-features=AutomationControlled")
+            options.add_experimental_option("excludeSwitches", ["enable-automation"])
+            options.add_experimental_option("useAutomationExtension", False)
+            
             self.driver = webdriver.Chrome(options=options)
             self.wait = WebDriverWait(self.driver, 15)  # タイムアウトを15秒に延長
+            self._apply_stealth_script()
         except Exception as e:
             logger.error(f"Failed to setup Chrome driver: {str(e)}")
             raise
@@ -271,7 +277,8 @@ class NotePoster:
             logger.info("Attempting to login to Note")
             logger.info("Navigating to login page...")
             self.driver.get("https://note.com/login")
-            self._wait_for_page_load()
+            # ログインページが完全に表示されるまで待機 (メールアドレス入力欄で確認)
+            WebDriverWait(self.driver, 20).until(EC.presence_of_element_located((By.ID, "email")))
             self._check_memory_usage()
             
             logger.info("Clearing cookies...")
@@ -282,14 +289,14 @@ class NotePoster:
             email_input = self.wait.until(EC.presence_of_element_located((By.ID, "email")))
             email_input.clear()
             email_input.send_keys(self.email)
-            time.sleep(0.5)
+            time.sleep(1) # 待機時間を延長
             self._check_memory_usage()
             
             logger.info("Entering password...")
             password_input = self.wait.until(EC.presence_of_element_located((By.ID, "password")))
             password_input.clear()
             password_input.send_keys(self.password)
-            time.sleep(0.5)
+            time.sleep(1) # 待機時間を延長
             self._check_memory_usage()
             
             # ログインボタンのクリック
@@ -404,3 +411,15 @@ class NotePoster:
         except Exception as e:
             logger.error(f"Failed to check elements: {str(e)}")
             return {}
+
+    def _apply_stealth_script(self):
+        """WebDriver検出を回避するためのJavaScriptを実行"""
+        try:
+            self.driver.execute_script("""
+              Object.defineProperty(navigator, 'webdriver', {
+                get: () => undefined
+              })
+            """)
+            logger.info("Applied stealth script")
+        except Exception as e:
+            logger.error(f"Failed to apply stealth script: {str(e)}")
