@@ -6,7 +6,7 @@ import logging
 logger = logging.getLogger(__name__)
 bp = Blueprint('generate_article', __name__)
 
-@bp.route('/generate', methods=['POST'])
+@bp.route('/generate_article', methods=['POST'])
 def generate():
     """
     ニュース情報から記事を生成するエンドポイント
