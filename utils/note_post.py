@@ -50,14 +50,19 @@ class NotePoster:
             logger.error(f"Current URL: {current_url}")
             logger.error(f"Page title: {page_title}")
             
-            # ページのソースの一部を取得（最初の500文字）
-            page_source = self.driver.page_source[:500]
-            logger.error(f"Page source preview: {page_source}")
+            # ページのソースの一部を取得（最初の200文字）
+            page_source = self.driver.page_source[:200]
+            logger.error(f"Page source preview: {page_source}...")
+            
+            # 重要な要素の状態を確認
+            elements_status = self._check_critical_elements()
+            logger.error(f"Elements status: {elements_status}")
             
             return {
                 'timestamp': timestamp,
                 'url': current_url,
-                'title': page_title
+                'title': page_title,
+                'elements_status': elements_status
             }
         except Exception as e:
             logger.error(f"Failed to collect error information: {str(e)}")
@@ -203,12 +208,12 @@ class NotePoster:
             elements_status = {
                 'email_field': bool(self.driver.find_elements(By.ID, "email")),
                 'password_field': bool(self.driver.find_elements(By.ID, "password")),
-                'login_button': bool(self.driver.find_elements(By.XPATH, '//button[contains(.,"ログイン")]'))
+                'login_button': bool(self.driver.find_elements(By.XPATH, '//button[contains(.,"ログイン")]')),
+                'note_header': bool(self.driver.find_elements(By.XPATH, '//div[contains(@class, "note-header")]')),
+                'note_header_user': bool(self.driver.find_elements(By.XPATH, '//div[contains(@class, "note-header__user")]')),
+                'note_header_menu': bool(self.driver.find_elements(By.XPATH, '//div[contains(@class, "note-header__menu")]')),
+                'mypage_link': bool(self.driver.find_elements(By.XPATH, '//a[contains(@href, "/mypage")]'))
             }
-            
-            for element_name, is_present in elements_status.items():
-                logger.info(f"{element_name}: {'Found' if is_present else 'Not found'}")
-                
             return elements_status
         except Exception as e:
             logger.error(f"Failed to check elements: {str(e)}")
