@@ -50,10 +50,6 @@ class NotePoster:
             logger.error(f"Current URL: {current_url}")
             logger.error(f"Page title: {page_title}")
             
-            # ページのソースの一部を取得（最初の200文字）
-            page_source = self.driver.page_source[:200]
-            logger.error(f"Page source preview: {page_source}...")
-            
             # 重要な要素の状態を確認
             elements_status = self._check_critical_elements()
             logger.error(f"Elements status: {elements_status}")
@@ -79,6 +75,8 @@ class NotePoster:
             options.add_argument("--disable-gpu")
             options.add_argument("--disable-features=NetworkService,NetworkServiceInProcess")
             options.add_argument("--window-size=1920,1080")
+            # ユーザーエージェントを設定
+            options.add_argument("--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
             logger.info("Chrome options configured")
             self.driver = webdriver.Chrome(options=options)
             logger.info("Chrome driver initialized successfully")
@@ -94,6 +92,10 @@ class NotePoster:
             logger.info("Navigating to login page...")
             self.driver.get("https://note.com/login")
             logger.info("Login page loaded")
+            
+            # クッキーをクリア
+            self.driver.delete_all_cookies()
+            logger.info("Cookies cleared")
             
             # ログインフォームの入力
             logger.info("Waiting for email input field...")
