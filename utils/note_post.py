@@ -224,6 +224,12 @@ class NotePoster:
             options.add_argument("--log-level=3")
             options.add_argument("--silent")
             
+            # 日本語表示のためのオプションを追加
+            options.add_argument("--lang=ja")
+            options.add_argument("--accept-lang=ja")
+            options.add_argument("--force-device-scale-factor=1") # スケーリングを強制しない
+            options.add_argument("--high-dpi-support=1") # DPIサポートを有効に
+
             self.driver = webdriver.Chrome(options=options)
             self.wait = WebDriverWait(self.driver, 15)  # タイムアウトを15秒に延長
         except Exception as e:
