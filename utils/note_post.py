@@ -68,6 +68,22 @@ class NotePoster:
                 self.driver = None
         gc.collect()
         
+    def _check_memory_usage(self):
+        """メモリ使用量をチェック"""
+        try:
+            process = psutil.Process(os.getpid())
+            memory_info = process.memory_info()
+            memory_percent = process.memory_percent()
+            logger.info(f"Memory usage: {memory_info.rss / 1024 / 1024:.2f} MB ({memory_percent:.1f}%)")
+            
+            # メモリ使用量が80%を超えた場合、スクリーンショットを保存
+            if memory_percent > 80:
+                logger.warning("High memory usage detected")
+                self._save_screenshot('high_memory')
+                gc.collect()
+        except Exception as e:
+            logger.error(f"Failed to check memory usage: {str(e)}")
+        
     def _save_screenshot(self, error_type: str) -> str:
         """スクリーンショットを保存し、保存先のパスを返す"""
         try:
@@ -78,9 +94,13 @@ class NotePoster:
             filepath = os.path.join(temp_dir, filename)
             
             # スクリーンショットを保存
-            self.driver.save_screenshot(filepath)
-            logger.info(f"Screenshot saved: {filepath}")
-            return filepath
+            if self.driver:
+                self.driver.save_screenshot(filepath)
+                logger.info(f"Screenshot saved: {filepath}")
+                return filepath
+            else:
+                logger.warning("Driver not available for screenshot")
+                return ""
         except Exception as e:
             logger.error(f"Failed to save screenshot: {str(e)}")
             return ""
@@ -88,11 +108,13 @@ class NotePoster:
     def _collect_error_info(self) -> Dict[str, Any]:
         """エラー情報を収集"""
         try:
+            screenshot_path = self._save_screenshot('error')
             return {
-                'url': self.driver.current_url,
-                'title': self.driver.title,
-                'elements_status': self._check_critical_elements(),
-                'screenshot_path': self._save_screenshot('error')
+                'url': self.driver.current_url if self.driver else "No driver",
+                'title': self.driver.title if self.driver else "No driver",
+                'elements_status': self._check_critical_elements() if self.driver else {},
+                'screenshot_path': screenshot_path,
+                'memory_usage': psutil.Process(os.getpid()).memory_percent()
             }
         except Exception as e:
             logger.error(f"Failed to collect error information: {str(e)}")
@@ -186,6 +208,8 @@ class NotePoster:
             logger.info("Navigating to login page...")
             self.driver.get("https://note.com/login")
             self._wait_for_page_load()
+            self._check_memory_usage()
+            
             logger.info("Clearing cookies...")
             self.driver.delete_all_cookies()
             
@@ -195,12 +219,14 @@ class NotePoster:
             email_input.clear()
             email_input.send_keys(self.email)
             time.sleep(0.5)
+            self._check_memory_usage()
             
             logger.info("Entering password...")
             password_input = self.wait.until(EC.presence_of_element_located((By.ID, "password")))
             password_input.clear()
             password_input.send_keys(self.password)
             time.sleep(0.5)
+            self._check_memory_usage()
             
             # ログインボタンのクリック
             logger.info("Clicking login button...")
@@ -248,6 +274,10 @@ class NotePoster:
         except WebDriverException as e:
             error_info = self._collect_error_info()
             logger.error(f"WebDriver error. Status: {error_info}")
+            raise
+        except Exception as e:
+            error_info = self._collect_error_info()
+            logger.error(f"Unexpected error during login. Status: {error_info}")
             raise
             
     def post_article(self, article_body: str, title: str) -> Optional[str]:
