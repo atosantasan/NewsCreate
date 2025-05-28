@@ -124,13 +124,20 @@ class NotePoster:
                     msg.attach(img)
 
             # メール送信
-            with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-                smtp.login(self.smtp_email, self.smtp_password)
-                smtp.send_message(msg)
-                logger.info(f"Error notification email sent to {self.notification_email}")
+            try:
+                with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+                    smtp.login(self.smtp_email, self.smtp_password)
+                    smtp.send_message(msg)
+                    logger.info(f"Error notification email sent to {self.notification_email}")
+            except smtplib.SMTPAuthenticationError as e:
+                logger.error(f"Gmail認証エラー: アプリパスワードが正しく設定されていない可能性があります。")
+                logger.error(f"エラー詳細: {str(e)}")
+                logger.error("Gmailの2段階認証を有効にし、アプリパスワードを生成してください。")
+            except smtplib.SMTPException as e:
+                logger.error(f"メール送信エラー: {str(e)}")
 
         except Exception as e:
-            logger.error(f"Failed to send error notification email: {str(e)}")
+            logger.error(f"メール送信処理で予期せぬエラーが発生: {str(e)}")
 
     def _save_screenshot(self, error_type: str) -> str:
         """スクリーンショットを保存し、保存先のパスを返す"""
