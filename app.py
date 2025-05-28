@@ -54,6 +54,13 @@ def create_app(config_name='default'):
     app.register_blueprint(post_note.bp, url_prefix='/api/v1')
     app.register_blueprint(post_twitter.bp, url_prefix='/api/v1')
     
+    @app.route('/')
+    def health_check():
+        return jsonify({
+            'status': 'ok',
+            'message': 'Service is running'
+        }), 200
+    
     # グローバルエラーハンドラー
     @app.errorhandler(400)
     def bad_request(error):
@@ -78,7 +85,7 @@ def create_app(config_name='default'):
             'status': 'error',
             'message': 'Internal server error'
         }), 500
-    
+        
     return app
 
 if __name__ == '__main__':
