@@ -17,6 +17,10 @@ import sys
 import psutil
 from tenacity import retry, stop_after_attempt, wait_exponential
 import tempfile
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.image import MIMEImage
+from email.mime.multipart import MIMEMultipart
 
 # ログ設定を追加
 logging.basicConfig(
@@ -39,9 +43,14 @@ class NotePoster:
         load_dotenv()
         self.email = os.getenv("NOTE_EMAIL")
         self.password = os.getenv("NOTE_PASSWORD")
+        self.smtp_email = os.getenv("SMTP_EMAIL")
+        self.smtp_password = os.getenv("SMTP_PASSWORD")
+        self.notification_email = os.getenv("NOTIFICATION_EMAIL")
         
         if not self.email or not self.password:
             raise ValueError("NOTE_EMAIL and NOTE_PASSWORD are required")
+        if not self.smtp_email or not self.smtp_password or not self.notification_email:
+            raise ValueError("SMTP_EMAIL, SMTP_PASSWORD, and NOTIFICATION_EMAIL are required")
             
         self.driver = None
         self.wait = None
@@ -84,6 +93,45 @@ class NotePoster:
         except Exception as e:
             logger.error(f"Failed to check memory usage: {str(e)}")
         
+    def _send_error_notification(self, error_type: str, error_info: Dict[str, Any], screenshot_path: str):
+        """エラー通知メールを送信"""
+        try:
+            msg = MIMEMultipart()
+            msg['Subject'] = f'Note Post Error: {error_type}'
+            msg['From'] = self.smtp_email
+            msg['To'] = self.notification_email
+
+            # エラー情報を本文に追加
+            body = f"""
+            エラーが発生しました。
+
+            エラータイプ: {error_type}
+            発生時刻: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+            URL: {error_info.get('url', 'N/A')}
+            ページタイトル: {error_info.get('title', 'N/A')}
+            メモリ使用量: {error_info.get('memory_usage', 'N/A')}%
+
+            要素の状態:
+            {chr(10).join(f'- {k}: {v}' for k, v in error_info.get('elements_status', {}).items())}
+            """
+            msg.attach(MIMEText(body, 'plain'))
+
+            # スクリーンショットを添付
+            if os.path.exists(screenshot_path):
+                with open(screenshot_path, 'rb') as f:
+                    img = MIMEImage(f.read())
+                    img.add_header('Content-Disposition', 'attachment', filename=os.path.basename(screenshot_path))
+                    msg.attach(img)
+
+            # メール送信
+            with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+                smtp.login(self.smtp_email, self.smtp_password)
+                smtp.send_message(msg)
+                logger.info(f"Error notification email sent to {self.notification_email}")
+
+        except Exception as e:
+            logger.error(f"Failed to send error notification email: {str(e)}")
+
     def _save_screenshot(self, error_type: str) -> str:
         """スクリーンショットを保存し、保存先のパスを返す"""
         try:
@@ -109,13 +157,16 @@ class NotePoster:
         """エラー情報を収集"""
         try:
             screenshot_path = self._save_screenshot('error')
-            return {
+            error_info = {
                 'url': self.driver.current_url if self.driver else "No driver",
                 'title': self.driver.title if self.driver else "No driver",
                 'elements_status': self._check_critical_elements() if self.driver else {},
                 'screenshot_path': screenshot_path,
                 'memory_usage': psutil.Process(os.getpid()).memory_percent()
             }
+            # エラー通知メールを送信
+            self._send_error_notification('error', error_info, screenshot_path)
+            return error_info
         except Exception as e:
             logger.error(f"Failed to collect error information: {str(e)}")
             return {}
