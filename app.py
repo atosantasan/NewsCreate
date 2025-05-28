@@ -48,7 +48,7 @@ def create_app(config_name='default'):
     setup_logger(app)
     
     # エンドポイントの登録
-    from .endpoints import fetch_news, generate_article, post_note, post_twitter
+    from endpoints import fetch_news, generate_article, post_note, post_twitter
     app.register_blueprint(fetch_news.bp, url_prefix='/api/v1')
     app.register_blueprint(generate_article.bp, url_prefix='/api/v1')
     app.register_blueprint(post_note.bp, url_prefix='/api/v1')
