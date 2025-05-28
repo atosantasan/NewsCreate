@@ -1,6 +1,6 @@
 # endpoints/post_note.py
 from flask import Blueprint, request, jsonify
-from ..utils.note_post import NotePoster
+from utils.note_post import NotePoster
 import logging
 
 logger = logging.getLogger(__name__)

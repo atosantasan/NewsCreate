@@ -1,6 +1,6 @@
 # endpoints/fetch_news.py
 from flask import Blueprint, jsonify
-from ..utils.news_fetcher import NewsFetcher
+from utils.news_fetcher import NewsFetcher
 import logging
 
 logger = logging.getLogger(__name__)

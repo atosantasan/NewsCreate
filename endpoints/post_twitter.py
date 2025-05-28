@@ -1,6 +1,6 @@
 # endpoints/post_twitter.py
 from flask import Blueprint, request, jsonify
-from ..utils.twitter_bot import TwitterBot
+from utils.twitter_bot import TwitterBot
 import logging
 
 logger = logging.getLogger(__name__)

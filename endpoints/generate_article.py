@@ -1,6 +1,6 @@
 # endpoints/generate_article.py
 from flask import Blueprint, request, jsonify
-from ..utils.gemini_writer import GeminiWriter
+from utils.gemini_writer import GeminiWriter
 import logging
 
 logger = logging.getLogger(__name__)
