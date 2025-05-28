@@ -16,6 +16,7 @@ import signal
 import sys
 import psutil
 from tenacity import retry, stop_after_attempt, wait_exponential
+import tempfile
 
 # ログ設定を追加
 logging.basicConfig(
@@ -67,13 +68,31 @@ class NotePoster:
                 self.driver = None
         gc.collect()
         
+    def _save_screenshot(self, error_type: str) -> str:
+        """スクリーンショットを保存し、保存先のパスを返す"""
+        try:
+            # 一時ディレクトリに保存
+            temp_dir = tempfile.gettempdir()
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"note_error_{error_type}_{timestamp}.png"
+            filepath = os.path.join(temp_dir, filename)
+            
+            # スクリーンショットを保存
+            self.driver.save_screenshot(filepath)
+            logger.info(f"Screenshot saved: {filepath}")
+            return filepath
+        except Exception as e:
+            logger.error(f"Failed to save screenshot: {str(e)}")
+            return ""
+
     def _collect_error_info(self) -> Dict[str, Any]:
         """エラー情報を収集"""
         try:
             return {
                 'url': self.driver.current_url,
                 'title': self.driver.title,
-                'elements_status': self._check_critical_elements()
+                'elements_status': self._check_critical_elements(),
+                'screenshot_path': self._save_screenshot('error')
             }
         except Exception as e:
             logger.error(f"Failed to collect error information: {str(e)}")
@@ -197,6 +216,7 @@ class NotePoster:
                 error_message = self._check_login_error()
                 if error_message:
                     logger.error(f"Login error message: {error_message}")
+                    self._save_screenshot('login_error')
                     raise ValueError(f"Login failed: {error_message}")
                 
                 # 代替の要素をチェック
