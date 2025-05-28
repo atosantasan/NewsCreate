@@ -1,5 +1,5 @@
 Flask==3.0.2
-APScheduler==3.11.1
+APScheduler==3.10.4  # ← 修正ポイント！
 requests==2.31.0
 python-dotenv==1.0.1
 selenium==4.11.2
