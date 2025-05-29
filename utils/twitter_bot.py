@@ -402,17 +402,26 @@ class TwitterBot:
             for char in self.twitter_password:
                 password_input.send_keys(char)
                 time.sleep(0.1)
-            time.sleep(5) # パスワード入力後の静的待機を追加
+            time.sleep(7) # パスワード入力後の静的待機をさらに延長
             password_input.send_keys(Keys.RETURN)
             
             # パスワード入力後の画面遷移や処理を待機
             logger.info("Waiting after password input and return...")
-            time.sleep(5) # パスワード入力後の静的待機を追加
+            time.sleep(7) # パスワード入力後の静的待機をさらに延長
             logger.info("Finished static wait after password input.")
             
             # ログインボタンがクリック可能になるまで待機
             logger.info("Waiting for login button to be clickable...")
             
+            # ログインボタン待機前のページソースの一部をログ出力
+            try:
+                logger.info("Logging page source snippet before login button wait...")
+                # bodyタグ内の最初の1000文字程度をログ出力
+                body_element = self.driver.find_element(By.TAG_NAME, "body")
+                logger.info(f"Body source snippet: {body_element.get_attribute('innerHTML')[:1000]}...")
+            except Exception as source_log_e:
+                logger.warning(f"Failed to log page source snippet: {str(source_log_e)}")
+
             # ログインボタンクリック前のURLをログ出力
             logger.info(f"URL before clicking login button: {self.driver.current_url}")
 
@@ -443,6 +452,13 @@ class TwitterBot:
                     
                 except Exception as e_click:
                     logger.warning(f"Standard click failed (inside retry): {str(e_click)}. Attempting JavaScript click.")
+                    # クリック失敗時の要素状態ログ
+                    try:
+                        failed_element = self.driver.find_element(By.XPATH, '//div[@data-testid="loginButton"]')
+                        logger.warning(f"Failed element state (standard click): Displayed={failed_element.is_displayed()}, Enabled={failed_element.is_enabled()}, Location={failed_element.location}, Size={failed_element.size}")
+                    except Exception as state_log_e:
+                        logger.warning(f"Failed to log element state after standard click failure: {str(state_log_e)}")
+
                     try:
                         # JavaScriptでクリックを試みる (要素を再度特定)
                         logger.info("Attempting to re-find login button for JS click...")
@@ -456,6 +472,13 @@ class TwitterBot:
                         return True # 成功
                     except Exception as e_js_click:
                         logger.error(f"JavaScript click also failed (inside retry): {str(e_js_click)}")
+                        # クリック失敗時の要素状態ログ (JSクリック後)
+                        try:
+                            failed_element = self.driver.find_element(By.XPATH, '//div[@data-testid="loginButton"]')
+                            logger.error(f"Failed element state (JS click): Displayed={failed_element.is_displayed()}, Enabled={failed_element.is_enabled()}, Location={failed_element.location}, Size={failed_element.size}")
+                        except Exception as state_log_e:
+                            logger.error(f"Failed to log element state after JS click failure: {str(state_log_e)}")
+
                         # クリック失敗時の詳細ログ
                         current_url = self.driver.current_url if self.driver else "N/A"
                         page_title = self.driver.title if self.driver else "N/A"
