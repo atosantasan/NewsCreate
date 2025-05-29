@@ -402,7 +402,7 @@ class TwitterBot:
             for char in self.twitter_password:
                 password_input.send_keys(char)
                 time.sleep(0.1)
-            time.sleep(3) # 入力後の短い静的待機を延長
+            time.sleep(5) # パスワード入力後の静的待機を追加
             password_input.send_keys(Keys.RETURN)
             
             # パスワード入力後の画面遷移や処理を待機
@@ -416,49 +416,71 @@ class TwitterBot:
             # ログインボタンクリック前のURLをログ出力
             logger.info(f"URL before clicking login button: {self.driver.current_url}")
 
-            try:
-                # データテストIDを使用してログインボタンを特定 (存在を確認)
-                logger.info("Checking for login button presence...")
-                WebDriverWait(self.driver, 30).until(
-                     EC.presence_of_element_located((By.XPATH, '//div[@data-testid="loginButton"]'))
-                )
-                logger.info("Login button element is present in DOM.")
-                
-                # 要素がクリック可能になるまで待機
-                logger.info("Waiting for login button to be clickable...")
-                login_button = self.wait.until(
-                    EC.element_to_be_clickable((By.XPATH, '//div[@data-testid="loginButton"]'))
-                )
-                logger.info("Login button found and is clickable.")
-
-                # 標準のclick()を試す
-                login_button.click()
-                logger.info("Standard click on login button successful.")
-                
-            except Exception as e_click:
-                logger.warning(f"Standard click failed: {str(e_click)}. Attempting JavaScript click.")
+            @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
+            def _click_login_button():
+                logger.info("Attempting to click login button (inside retry)...")
                 try:
-                    # JavaScriptでクリックを試みる (要素を再度特定する必要があるかもしれないが、ここでは前の要素を再利用)
-                    # もしJSクリックでもエラー 'cannot access local variable 'login_button'' が出る場合は、
-                    # ここで再度login_button要素を特定する処理が必要。
-                    # 例: login_button = self.wait.until(EC.presence_of_element_located((By.XPATH, '//div[@data-testid="loginButton"]')))
-                    self.driver.execute_script("arguments[0].click();", login_button)
-                    logger.info("JavaScript click on login button successful.")
-                except Exception as e_js_click:
-                    logger.error(f"JavaScript click also failed: {str(e_js_click)}")
-                    # クリック失敗時のスクリーンショットとエラー通知
-                    screenshot_path = self._save_screenshot("login_button_click_failed")
-                    error_info = {
-                        'url': self.driver.current_url if self.driver else "N/A",
-                        'error': f"Failed to click login button: {str(e_click) if 'e_click' in locals() else 'Unknown error'} / JS error: {str(e_js_click)}",
-                        'screenshot_path': screenshot_path
-                    }
-                    self._send_error_notification("Login Button Click Failed", error_info, [screenshot_path] if screenshot_path else [], "twitter_bot.log")
-                    raise Exception("Failed to click login button") from e_js_click # クリック失敗を通知してリトライさせる
+                    # データテストIDを使用してログインボタンを特定 (存在を確認)
+                    logger.info("Checking for login button presence (inside retry)...")
+                    WebDriverWait(self.driver, 30).until(
+                         EC.presence_of_element_located((By.XPATH, '//div[@data-testid="loginButton"]'))
+                    )
+                    logger.info("Login button element is present in DOM (inside retry).")
+                    
+                    # 要素がクリック可能になるまで待機
+                    logger.info("Waiting for login button to be clickable (inside retry)...")
+                    # 待機時間を120秒に延長
+                    login_button = WebDriverWait(self.driver, 120).until(
+                        EC.element_to_be_clickable((By.XPATH, '//div[@data-testid="loginButton"]'))
+                    )
+                    logger.info("Login button found and is clickable (inside retry).")
+
+                    # 標準のclick()を試す
+                    logger.info("Attempting standard click...")
+                    login_button.click()
+                    logger.info("Standard click on login button successful (inside retry).")
+                    return True # 成功
+                    
+                except Exception as e_click:
+                    logger.warning(f"Standard click failed (inside retry): {str(e_click)}. Attempting JavaScript click.")
+                    try:
+                        # JavaScriptでクリックを試みる (要素を再度特定)
+                        logger.info("Attempting to re-find login button for JS click...")
+                        js_login_button = WebDriverWait(self.driver, 10).until(
+                             EC.presence_of_element_located((By.XPATH, '//div[@data-testid="loginButton"]'))
+                        )
+                        logger.info("Login button re-found for JS click.")
+                        
+                        self.driver.execute_script("arguments[0].click();", js_login_button)
+                        logger.info("JavaScript click on login button successful (inside retry).")
+                        return True # 成功
+                    except Exception as e_js_click:
+                        logger.error(f"JavaScript click also failed (inside retry): {str(e_js_click)}")
+                        # クリック失敗時の詳細ログ
+                        current_url = self.driver.current_url if self.driver else "N/A"
+                        page_title = self.driver.title if self.driver else "N/A"
+                        logger.error(f"Click failed at URL: {current_url}, Title: {page_title}")
+                        # 必要に応じてページのソースの一部などをログ出力
+                        
+                        raise Exception(f"Login button click failed after retries: Standard: {str(e_click)}, JS: {str(e_js_click)}") # リトライ上限に達したら例外発生
+
+            try:
+                _click_login_button() # リトライ付きのクリック関数を呼び出し
+            except Exception as e:
+                logger.error(f"Final login button click attempt failed after retries: {str(e)}")
+                # クリック失敗時のスクリーンショットとエラー通知
+                screenshot_path = self._save_screenshot("login_button_final_click_failed")
+                error_info = {
+                    'url': self.driver.current_url if self.driver else "N/A",
+                    'error': str(e),
+                    'screenshot_path': screenshot_path
+                }
+                self._send_error_notification("Login Button Final Click Failed", error_info, [screenshot_path] if screenshot_path else [], "twitter_bot.log")
+                raise Exception("Failed to click login button") from e # ログイン失敗として上位に通知
 
             # ログインボタンクリック後のURLをログ出力
-            # Note: URLが即座に変わるとは限らないため、これは参考情報
-            logger.info(f"URL after clicking login button (immediately): {self.driver.current_url}")
+            # Note: リトライで成功した場合の最終的なURLを確認
+            logger.info(f"URL after successful login button click: {self.driver.current_url}")
             
             # ログイン完了の待機
             logger.info("Waiting for login completion...")
