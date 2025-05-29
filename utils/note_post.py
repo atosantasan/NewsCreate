@@ -416,10 +416,45 @@ class NotePoster:
                 # リトライのために例外を発生
                 raise Exception("Login failed")
                 
-        except Exception as e:
-            logger.error(f"Login error: {str(e)}")
+        except TimeoutException as e:
+            logger.error(f"Login timeout: {str(e)}")
             self._check_memory_usage()
             gc.collect()
+            # TimeoutExceptionの場合もエラー情報を収集し、メール送信
+            error_info = self._collect_error_info()
+            logger.error(f"Login timeout. Status: {error_info}") # 再度ログ出力
+            screenshot_paths = []
+            if self._login_button_screenshot_path and os.path.exists(self._login_button_screenshot_path):
+                 screenshot_paths.append(self._login_button_screenshot_path)
+            if error_info.get('screenshot_path') and os.path.exists(error_info['screenshot_path']):
+                 screenshot_paths.append(error_info['screenshot_path'])
+            self._send_error_notification('login_timeout', error_info, screenshot_paths, 'note_poster.log')
+            raise
+        except WebDriverException as e:
+            logger.error(f"WebDriver error during login: {str(e)}")
+            # WebDriverExceptionの場合もエラー情報を収集し、メール送信
+            error_info = self._collect_error_info()
+            logger.error(f"WebDriver error during login. Status: {error_info}") # 再度ログ出力
+            screenshot_paths = []
+            if self._login_button_screenshot_path and os.path.exists(self._login_button_screenshot_path):
+                 screenshot_paths.append(self._login_button_screenshot_path)
+            if error_info.get('screenshot_path') and os.path.exists(error_info['screenshot_path']):
+                 screenshot_paths.append(error_info['screenshot_path'])
+            self._send_error_notification('webdriver_error', error_info, screenshot_paths, 'note_poster.log')
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error during login: {str(e)}")
+            self._check_memory_usage()
+            gc.collect()
+            # その他の予期せぬエラーの場合もエラー情報を収集し、メール送信
+            error_info = self._collect_error_info()
+            logger.error(f"Unexpected error during login. Status: {error_info}") # 再度ログ出力
+            screenshot_paths = []
+            if self._login_button_screenshot_path and os.path.exists(self._login_button_screenshot_path):
+                 screenshot_paths.append(self._login_button_screenshot_path)
+            if error_info.get('screenshot_path') and os.path.exists(error_info['screenshot_path']):
+                 screenshot_paths.append(error_info['screenshot_path'])
+            self._send_error_notification('unexpected_login_error', error_info, screenshot_paths, 'note_poster.log')
             raise
             
     def post_article(self, article_body: str, title: str) -> Optional[str]:
@@ -467,6 +502,16 @@ class NotePoster:
         except Exception as e:
             error_info = self._collect_error_info()
             logger.error(f"Failed to post article. Status: {error_info}")
+            # エラー通知メール送信は_collect_error_info内で実施
+            
+            # post_article 内でのエラー発生時もログファイルとログイン前SSを添付するよう修正
+            screenshot_paths = []
+            if self._login_button_screenshot_path and os.path.exists(self._login_button_screenshot_path):
+                 screenshot_paths.append(self._login_button_screenshot_path)
+            if error_info.get('screenshot_path') and os.path.exists(error_info['screenshot_path']):
+                 screenshot_paths.append(error_info['screenshot_path'])
+            self._send_error_notification('post_article_failed', error_info, screenshot_paths, 'note_poster.log')
+            
             return None
             
         finally:
