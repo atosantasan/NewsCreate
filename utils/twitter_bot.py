@@ -34,12 +34,28 @@ class TwitterBot:
         options.add_argument('--headless')
         options.add_argument('--no-sandbox')
         options.add_argument('--disable-dev-shm-usage')
+        # Renderなどのサーバー環境でChromeバイナリを指定
+        options.binary_location = '/usr/bin/google-chrome' # RenderでのChromeバイナリのパス
+        options.add_argument("--disable-gpu") # GPUの無効化
+        options.add_argument("--window-size=1920,1080") # ウィンドウサイズの指定
+        options.add_argument("--remote-debugging-port=9222") # リモートデバッグポート
+        options.add_argument("--disable-extensions") # 拡張機能の無効化
+        options.add_argument("--disable-features=VizDisplayCompositor") # 特定機能の無効化
+
         options.add_argument("user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
-        
+        options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        options.add_experimental_option("useAutomationExtension", False)
+
+        # ChromeDriverManagerはローカルでの実行や特定の環境でWebDriverを管理しますが、
+        # Renderのような環境ではChromeバイナリ自体の存在が重要です。
+        # binary_locationを指定することで、WebDriverManagerの自動ダウンロードに依存せず、
+        # 指定されたChromeバイナリを使用させます。
+        # ただし、環境によってはWebDriverのバージョン問題が発生する可能性はあります。
         service = Service(ChromeDriverManager().install())
         self.driver = webdriver.Chrome(service=service, options=options)
         self.wait = WebDriverWait(self.driver, 40)
         self.modal_wait = WebDriverWait(self.driver, 5)
+        logger.info("Chrome driver initialized with specific options for Render.") # ログ追加
         
     def _handle_security_modal(self):
         """セキュリティモーダルの処理"""
