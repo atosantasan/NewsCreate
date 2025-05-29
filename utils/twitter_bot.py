@@ -324,7 +324,43 @@ class TwitterBot:
             
             # ユーザー名/メールアドレス入力
             logger.info("Entering username/email...")
-            initial_input = self.wait.until(EC.presence_of_element_located((By.XPATH, '//input[@autocomplete="username"] | //input[@name="text"]')))
+            try:
+                initial_input = self.wait.until(EC.presence_of_element_located((By.XPATH, '//input[@autocomplete="username"] | //input[@name="text"]')))
+                logger.info("Username/Email input field found.")
+            except TimeoutException:
+                logger.error("Timeout waiting for username/email input field.")
+                # エラー時のスクリーンショットとメール通知
+                screenshot_path = self._save_screenshot("username_email_timeout")
+                error_info = {
+                    'url': self.driver.current_url if self.driver else "N/A",
+                    'error': "Timeout waiting for username/email input field.",
+                    'screenshot_path': screenshot_path
+                }
+                self._send_error_notification("Username/Email Timeout", error_info, [screenshot_path] if screenshot_path else [], "twitter_bot.log")
+                raise TimeoutException("Timeout waiting for username/email input field.")
+            except NoSuchElementException:
+                 logger.error("Username/Email input field not found.")
+                 # エラー時のスクリーンショットとメール通知
+                 screenshot_path = self._save_screenshot("username_email_not_found")
+                 error_info = {
+                     'url': self.driver.current_url if self.driver else "N/A",
+                     'error': "Username/Email input field not found.",
+                     'screenshot_path': screenshot_path
+                 }
+                 self._send_error_notification("Username/Email Not Found", error_info, [screenshot_path] if screenshot_path else [], "twitter_bot.log")
+                 raise NoSuchElementException("Username/Email input field not found.")
+            except Exception as e:
+                 logger.error(f"An error occurred while waiting for username/email field: {str(e)}")
+                 # エラー時のスクリーンショットとメール通知
+                 screenshot_path = self._save_screenshot("username_email_wait_error")
+                 error_info = {
+                     'url': self.driver.current_url if self.driver else "N/A",
+                     'error': str(e),
+                     'screenshot_path': screenshot_path
+                 }
+                 self._send_error_notification("Username/Email Wait Error", error_info, [screenshot_path] if screenshot_path else [], "twitter_bot.log")
+                 raise
+
             initial_input.clear()
             for char in self.twitter_id:
                 initial_input.send_keys(char)
