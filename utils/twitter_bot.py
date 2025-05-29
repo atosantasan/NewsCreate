@@ -265,8 +265,15 @@ class TwitterBot:
             
             # ログイン完了の待機
             logger.info("Waiting for login completion...")
-            self.wait.until(EC.presence_of_element_located((By.XPATH, '//div[@data-testid="tweetTextarea_0"] | //div[@aria-label="What\'s happening?"]')))
-            logger.info("Successfully logged in to Twitter")
+            try:
+                # ツイート入力エリアまたはホームボタンの出現を待機
+                self.wait.until(
+                    EC.presence_of_element_located((By.XPATH, '//div[@data-testid="tweetTextarea_0"] | //div[@aria-label="Home timeline"] | //a[@data-testid="AppTabBar_Home_Link"]'))
+                )
+                logger.info("Successfully logged in to Twitter")
+            except TimeoutException:
+                logger.error("Timeout waiting for login completion elements.")
+                raise TimeoutException("Timeout waiting for login completion elements.") # タイムアウト時に例外を再発生
             
         except Exception as e:
             logger.error(f"Login failed: {str(e)}")
@@ -274,43 +281,97 @@ class TwitterBot:
             screenshot_path = self._save_screenshot("login_error")
             if screenshot_path:
                 logger.info(f"Login error screenshot saved: {screenshot_path}")
-            raise
+            # エラー時の詳細情報を追加
+            current_url = self.driver.current_url if self.driver else "N/A"
+            page_source = self.driver.page_source if self.driver else "N/A"
+            logger.error(f"Login failed at URL: {current_url}")
+            # ページのソースは長くなる可能性があるため、必要に応じてコメントアウトや一部表示に調整
+            # logger.error(f"Page source: {page_source[:500]}...") 
+            raise # 例外を再発生させて、リトライ処理に委ねる
             
     def post_tweet(self, title: str, url: str) -> bool:
         """ツイートを投稿する"""
         try:
             logger.info(f"Starting tweet posting process for title: {title}")
+            # _loginメソッドは内部で_setup_driverを呼び出し、ログインに失敗した場合は例外を発生させます。
+            # 成功した場合のみ、以下の処理に進みます。
             self._login()
             
             # ツイート作成画面を開く
             logger.info("Opening tweet composition screen...")
-            post_button = self.wait.until(EC.element_to_be_clickable((By.XPATH, '//a[@aria-label="Post"]')))
-            post_button.click()
+            try:
+                post_button = self.wait.until(EC.element_to_be_clickable((By.XPATH, '//a[@aria-label="Post"]')))
+                post_button.click()
+            except TimeoutException:
+                logger.error("Timeout waiting for tweet post button.")
+                self._save_screenshot("post_button_timeout")
+                raise TimeoutException("Timeout waiting for tweet post button.")
+            except NoSuchElementException:
+                logger.error("Tweet post button not found.")
+                self._save_screenshot("post_button_not_found")
+                raise NoSuchElementException("Tweet post button not found.")
+            except Exception as e:
+                logger.error(f"Error clicking tweet post button: {str(e)}")
+                self._save_screenshot("post_button_error")
+                raise
             
             # ツイート内容の入力
             logger.info("Entering tweet content...")
-            tweet_box = self.wait.until(EC.presence_of_element_located((By.XPATH, '//div[@data-testid="tweetTextarea_0"]')))
-            tweet_content = f"{title}\n{url}"
-            tweet_box.send_keys(tweet_content)
-            time.sleep(2)
+            try:
+                tweet_box = self.wait.until(EC.presence_of_element_located((By.XPATH, '//div[@data-testid="tweetTextarea_0"]')))
+                tweet_content = f"{title}\n{url}"
+                tweet_box.send_keys(tweet_content)
+                time.sleep(2)
+            except TimeoutException:
+                logger.error("Timeout waiting for tweet text area.")
+                self._save_screenshot("tweet_area_timeout")
+                raise TimeoutException("Timeout waiting for tweet text area.")
+            except NoSuchElementException:
+                logger.error("Tweet text area not found.")
+                self._save_screenshot("tweet_area_not_found")
+                raise NoSuchElementException("Tweet text area not found.")
+            except Exception as e:
+                logger.error(f"Error entering tweet content: {str(e)}")
+                self._save_screenshot("tweet_content_error")
+                raise
             
             # 投稿ボタンのクリック
             logger.info("Clicking post button...")
-            tweet_button = self.wait.until(EC.element_to_be_clickable((By.XPATH, '//button[@data-testid="tweetButton"] | //div[@data-testid="tweetButtonInline"]')))
-            tweet_button.click()
+            try:
+                # ツイート作成モーダル内の投稿ボタンを対象とする
+                tweet_button = self.wait.until(EC.element_to_be_clickable((By.XPATH, '//div[@data-testid="tweetComposer"]//button[@data-testid="tweetButton"]')))
+                tweet_button.click()
+            except TimeoutException:
+                logger.error("Timeout waiting for final tweet button.")
+                self._save_screenshot("final_tweet_button_timeout")
+                raise TimeoutException("Timeout waiting for final tweet button.")
+            except NoSuchElementException:
+                logger.error("Final tweet button not found.")
+                self._save_screenshot("final_tweet_button_not_found")
+                raise NoSuchElementException("Final tweet button not found.")
+            except Exception as e:
+                logger.error(f"Error clicking final tweet button: {str(e)}")
+                self._save_screenshot("final_tweet_button_error")
+                raise
             
-            # 投稿完了の待機
+            # 投稿完了の待機 (成功メッセージやツイートが表示されるのを待つなど、より具体的な条件にすることも検討)
             logger.info("Waiting for tweet completion...")
-            time.sleep(10)
-            logger.info("Tweet posted successfully")
+            time.sleep(10) # 一旦静的な待機
+            # TODO: ツイートが成功したことを示す要素や画面遷移を待つ条件を追加
+            logger.info("Tweet posting process finished (Success confirmation might be needed).")
             return True
             
         except Exception as e:
             logger.error(f"Failed to post tweet: {str(e)}")
             self._check_memory_usage()
-            screenshot_path = self._save_screenshot("post_error")
+            screenshot_path = self._save_screenshot("post_tweet_error") # エラータイプ名を変更
             if screenshot_path:
                 logger.info(f"Error screenshot saved: {screenshot_path}")
+            # エラー時の詳細情報を追加
+            current_url = self.driver.current_url if self.driver else "N/A"
+            page_source = self.driver.page_source if self.driver else "N/A"
+            logger.error(f"Tweet post failed at URL: {current_url}")
+            # logger.error(f"Page source: {page_source[:500]}...")
             return False
             
         finally:
