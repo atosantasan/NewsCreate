@@ -22,6 +22,7 @@ from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
+from email import encoders
 
 # ログ設定を追加
 logging.basicConfig(
@@ -183,12 +184,15 @@ class NotePoster:
                             with open(log_file_path, 'rb') as f:
                                 part = MIMEApplication(f.read(),_subtype="octet-stream")
                                 part['Content-Disposition'] = f'attachment; filename="{os.path.basename(log_file_path)}"'
+                                encoders.encode_base64(part)
                                 msg.attach(part)
                                 logger.info(f"Successfully attached log file: {log_file_path}")
                     else:
                         logger.warning(f"Log file not found: {log_file_path}")
                 except Exception as e:
                     logger.error(f"Failed to attach log file {log_file_path}: {str(e)}")
+                    logger.error(f"エラーの種類: {type(e).__name__}")
+                    logger.error(f"エラーの詳細: {str(e)}")
 
             # メール送信
             try:
@@ -422,7 +426,7 @@ class NotePoster:
             gc.collect()
             # TimeoutExceptionの場合もエラー情報を収集し、メール送信
             error_info = self._collect_error_info()
-            logger.error(f"Login timeout. Status: {error_info}") # 再度ログ出力
+            logger.error(f"Login timeout. Status: {error_info}. Exception: {str(e)}") # 再度ログ出力と例外情報
             screenshot_paths = []
             if self._login_button_screenshot_path and os.path.exists(self._login_button_screenshot_path):
                  screenshot_paths.append(self._login_button_screenshot_path)
@@ -431,10 +435,12 @@ class NotePoster:
             self._send_error_notification('login_timeout', error_info, screenshot_paths, 'note_poster.log')
             raise
         except WebDriverException as e:
-            logger.error(f"WebDriver error during login: {str(e)}")
+            logger.error(f"WebDriver error during login: {e.msg}") # WebDriverエラーメッセージをログ出力
+            self._check_memory_usage()
+            gc.collect()
             # WebDriverExceptionの場合もエラー情報を収集し、メール送信
             error_info = self._collect_error_info()
-            logger.error(f"WebDriver error during login. Status: {error_info}") # 再度ログ出力
+            logger.error(f"WebDriver error during login. Status: {error_info}. Exception: {e.msg}") # 再度ログ出力と例外情報
             screenshot_paths = []
             if self._login_button_screenshot_path and os.path.exists(self._login_button_screenshot_path):
                  screenshot_paths.append(self._login_button_screenshot_path)
@@ -448,7 +454,7 @@ class NotePoster:
             gc.collect()
             # その他の予期せぬエラーの場合もエラー情報を収集し、メール送信
             error_info = self._collect_error_info()
-            logger.error(f"Unexpected error during login. Status: {error_info}") # 再度ログ出力
+            logger.error(f"Unexpected error during login. Status: {error_info}. Exception: {str(e)}") # 再度ログ出力と例外情報
             screenshot_paths = []
             if self._login_button_screenshot_path and os.path.exists(self._login_button_screenshot_path):
                  screenshot_paths.append(self._login_button_screenshot_path)
@@ -477,26 +483,33 @@ class NotePoster:
             title_input = self.wait.until(EC.presence_of_element_located((By.XPATH, '//textarea[@placeholder="記事タイトル"]')))
             title_input.clear()
             title_input.send_keys(title)
-            time.sleep(0.5)
+            time.sleep(1)
             
             body_input = self.wait.until(EC.presence_of_element_located((By.XPATH, '//div[@contenteditable="true" and contains(@class, "ProseMirror")]')))
             body_input.click()
             body_input.send_keys(article_body)
-            time.sleep(0.5)
+            time.sleep(1)
             
             # 公開処理
             publish_button = self.wait.until(EC.element_to_be_clickable((By.XPATH, '//span[contains(text(), "公開に進む")]')))
             publish_button.click()
-            time.sleep(1)
             
             post_button = self.wait.until(EC.element_to_be_clickable((By.XPATH, '//span[contains(text(), "投稿する")]')))
             post_button.click()
             
             # 投稿完了の待機
-            time.sleep(2)
+            time.sleep(5) # 待機時間を延長
             current_url = self.driver.current_url
             logger.info(f"Article posted successfully: {current_url}")
             
+            # 正常終了時もログファイルを添付してメール送信
+            success_info = {
+                 'url': current_url,
+                 'title': self.driver.title if self.driver else "No driver",
+                 'memory_usage': psutil.Process(os.getpid()).memory_percent()
+            }
+            self._send_error_notification('post_article_success', success_info, [], 'note_poster.log') # エラーでは無いのでスクリーンショットは空リスト
+
             return current_url
             
         except Exception as e:
