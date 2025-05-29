@@ -348,13 +348,16 @@ class TwitterBot:
                 
             # パスワード入力
             logger.info("Entering password...")
-            # XPathをより specific にする可能性あり。今回は現状維持。
-            password_input = self.wait.until(EC.presence_of_element_located((By.XPATH, '//input[@type="password"] | //input[@name="password"]')))
+            # 要素が画面に表示され、操作可能になるまで待機
+            password_input = self.wait.until(
+                EC.visibility_of_element_located((By.XPATH, '//input[@name="password"]')) # name="password"で特定を試みる
+                # EC.element_to_be_clickable((By.XPATH, '//input[@name="password"]')) # クリック可能になるまで待っても良い
+            )
             password_input.clear()
             for char in self.twitter_password:
                 password_input.send_keys(char)
                 time.sleep(0.1)
-            time.sleep(2)
+            time.sleep(2) # 入力後の短い静的待機
             password_input.send_keys(Keys.RETURN)
             
             # ログイン完了の待機
