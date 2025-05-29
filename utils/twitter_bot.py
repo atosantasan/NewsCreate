@@ -348,16 +348,25 @@ class TwitterBot:
                 
             # パスワード入力
             logger.info("Entering password...")
-            # 要素が画面に表示され、操作可能になるまで待機
+            
+            # ユーザーID入力後の画面遷移とページ読み込み完了を待機
+            self._wait_for_page_load(timeout=60) # ページ読み込み完了を待機
+            logger.info("Page loaded after User ID submission.")
+            time.sleep(3) # 短い静的待機
+            logger.info("Finished short static wait after page load.")
+            
+            # 要素が画面に表示され、クリック可能（書き込み可能）になるまで待機
+            # セレクタはdata-testid="tweetComposer"//input[@name="password"]なども考えられるが、汎用性を考慮し現状維持
             password_input = self.wait.until(
-                EC.visibility_of_element_located((By.XPATH, '//input[@name="password"]')) # name="password"で特定を試みる
-                # EC.element_to_be_clickable((By.XPATH, '//input[@name="password"]')) # クリック可能になるまで待っても良い
+                EC.element_to_be_clickable((By.XPATH, '//input[@name="password"]')) 
             )
+            logger.info("Password input field found and is clickable.")
+            
             password_input.clear()
             for char in self.twitter_password:
                 password_input.send_keys(char)
                 time.sleep(0.1)
-            time.sleep(2) # 入力後の短い静的待機
+            time.sleep(3) # 入力後の短い静的待機を延長
             password_input.send_keys(Keys.RETURN)
             
             # ログインボタンがクリック可能になるまで待機
