@@ -183,8 +183,9 @@ class NotePoster:
                         else:
                             with open(log_file_path, 'rb') as f:
                                 part = MIMEApplication(f.read(),_subtype="octet-stream")
-                                part['Content-Disposition'] = f'attachment; filename="{os.path.basename(log_file_path)}"'
+                                part.set_payload((f.read()))
                                 encoders.encode_base64(part)
+                                part.add_header('Content-Disposition', 'attachment', filename=os.path.basename(log_file_path))
                                 msg.attach(part)
                                 logger.info(f"Successfully attached log file: {log_file_path}")
                     else:
@@ -436,16 +437,20 @@ class NotePoster:
             raise
         except WebDriverException as e:
             logger.error(f"WebDriver error during login: {e.msg}") # WebDriverエラーメッセージをログ出力
+            logger.error(f"WebDriver Stacktrace:\n{e.stacktrace}") # スタックトレースもログ出力
             self._check_memory_usage()
             gc.collect()
             # WebDriverExceptionの場合もエラー情報を収集し、メール送信
             error_info = self._collect_error_info()
             logger.error(f"WebDriver error during login. Status: {error_info}. Exception: {e.msg}") # 再度ログ出力と例外情報
             screenshot_paths = []
+            # _save_screenshotはエラーが発生したtryブロック内では実行されないため、既に保存済みのログイン前SSのみ取得
             if self._login_button_screenshot_path and os.path.exists(self._login_button_screenshot_path):
                  screenshot_paths.append(self._login_button_screenshot_path)
+            # エラー情報収集時のスクリーンショットは_collect_error_info内で取得されるが、ここではログイン前SSを確実に含める
             if error_info.get('screenshot_path') and os.path.exists(error_info['screenshot_path']):
                  screenshot_paths.append(error_info['screenshot_path'])
+            
             self._send_error_notification('webdriver_error', error_info, screenshot_paths, 'note_poster.log')
             raise
         except Exception as e:
