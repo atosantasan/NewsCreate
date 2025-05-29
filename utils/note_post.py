@@ -21,6 +21,7 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
+from email.mime.application import MIMEApplication
 
 # ログ設定を追加
 logging.basicConfig(
@@ -55,6 +56,8 @@ class NotePoster:
         self.driver = None
         self.wait = None
         self._setup_signal_handlers()
+        
+        self._login_button_screenshot_path: Optional[str] = None
         
     def _setup_signal_handlers(self):
         """シグナルハンドラの設定"""
@@ -93,7 +96,7 @@ class NotePoster:
         except Exception as e:
             logger.error(f"Failed to check memory usage: {str(e)}")
         
-    def _send_error_notification(self, error_type: str, error_info: Dict[str, Any], screenshot_path: str):
+    def _send_error_notification(self, error_type: str, error_info: Dict[str, Any], screenshot_paths: list[str], log_file_path: Optional[str] = None):
         """エラー通知メールを送信"""
         try:
             msg = MIMEMultipart()
@@ -117,11 +120,25 @@ class NotePoster:
             msg.attach(MIMEText(body, 'plain'))
 
             # スクリーンショットを添付
-            if os.path.exists(screenshot_path):
-                with open(screenshot_path, 'rb') as f:
-                    img = MIMEImage(f.read())
-                    img.add_header('Content-Disposition', 'attachment', filename=os.path.basename(screenshot_path))
-                    msg.attach(img)
+            for screenshot_path in screenshot_paths:
+                if os.path.exists(screenshot_path):
+                    try:
+                        with open(screenshot_path, 'rb') as f:
+                            img = MIMEImage(f.read())
+                            img.add_header('Content-Disposition', 'attachment', filename=os.path.basename(screenshot_path))
+                            msg.attach(img)
+                    except Exception as e:
+                        logger.error(f"Failed to attach screenshot {screenshot_path}: {str(e)}")
+
+            # ログファイルを添付
+            if log_file_path and os.path.exists(log_file_path):
+                try:
+                    with open(log_file_path, 'rb') as f:
+                        part = MIMEApplication(f.read(),_subtype="octet-stream")
+                        part['Content-Disposition'] = f'attachment; filename="{os.path.basename(log_file_path)}"'
+                        msg.attach(part)
+                except Exception as e:
+                    logger.error(f"Failed to attach log file {log_file_path}: {str(e)}")
 
             # メール送信
             try:
@@ -130,14 +147,16 @@ class NotePoster:
                     smtp.send_message(msg)
                     logger.info(f"Error notification email sent to {self.notification_email}")
             except smtplib.SMTPAuthenticationError as e:
-                logger.error(f"Gmail認証エラー: アプリパスワードが正しく設定されていない可能性があります。")
+                logger.error("Gmail認証エラー: アプリパスワードが正しく設定されていない可能性があります。")
                 logger.error(f"エラー詳細: {str(e)}")
                 logger.error("Gmailの2段階認証を有効にし、アプリパスワードを生成してください。")
             except smtplib.SMTPException as e:
                 logger.error(f"メール送信エラー: {str(e)}")
+            except Exception as e:
+                logger.error(f"メール送信中の予期せぬエラー: {str(e)}")
 
         except Exception as e:
-            logger.error(f"メール送信処理で予期せぬエラーが発生: {str(e)}")
+            logger.error(f"メール通知送信処理で予期せぬエラーが発生: {str(e)}")
 
     def _save_screenshot(self, error_type: str) -> str:
         """スクリーンショットを保存し、保存先のパスを返す"""
@@ -172,10 +191,25 @@ class NotePoster:
                 'memory_usage': psutil.Process(os.getpid()).memory_percent()
             }
             # エラー通知メールを送信
-            self._send_error_notification('error', error_info, screenshot_path)
+            screenshot_paths = []
+            if screenshot_path and os.path.exists(screenshot_path):
+                screenshot_paths.append(screenshot_path)
+            self._send_error_notification('error', error_info, screenshot_paths, 'note_poster.log')
             return error_info
         except Exception as e:
             logger.error(f"Failed to collect error information: {str(e)}")
+            # エラー情報を収集できなかった場合も、可能な限りの情報でメール送信を試みる
+            error_info = {
+                 'url': self.driver.current_url if self.driver else "No driver",
+                 'title': self.driver.title if self.driver else "No driver",
+                 'elements_status': {} # 要素状態は収集できなかったとする
+            }
+            screenshot_paths = []
+            if self._login_button_screenshot_path and os.path.exists(self._login_button_screenshot_path):
+                screenshot_paths.append(self._login_button_screenshot_path)
+            # エラー情報収集時のスクリーンショットは保存できていないので含めない
+            
+            self._send_error_notification('error_collection_failed', error_info, screenshot_paths, 'note_poster.log')
             return {}
 
     def _setup_driver(self):
@@ -299,6 +333,9 @@ class NotePoster:
             time.sleep(1) # 待機時間を延長
             self._check_memory_usage()
             
+            # ログインボタンを押す前にスクリーンショットを保存
+            self._login_button_screenshot_path = self._save_screenshot('login_button_before')
+
             # ログインボタンのクリック
             logger.info("Clicking login button...")
             login_button = self.wait.until(EC.element_to_be_clickable((By.XPATH, '//button[contains(.,"ログイン")]')))
@@ -355,8 +392,13 @@ class NotePoster:
         """記事をNoteに投稿する"""
         try:
             logger.info(f"Starting article posting process for title: {title}")
+            # ログイン処理
             self._setup_driver()
             self._login()
+            self.cleanup() # ログイン後、ドライバーを一度終了してメモリ解放
+            
+            # 記事投稿処理のためにドライバーを再初期化
+            self._setup_driver()
             
             # 新規記事作成ページへ移動
             self.driver.get("https://note.com/notes/new")
