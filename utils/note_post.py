@@ -96,9 +96,40 @@ class NotePoster:
         except Exception as e:
             logger.error(f"Failed to check memory usage: {str(e)}")
         
+    def _save_screenshot(self, error_type: str) -> str:
+        """スクリーンショットを保存し、保存先のパスを返す"""
+        try:
+            # 一時ディレクトリに保存
+            temp_dir = tempfile.gettempdir()
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"note_error_{error_type}_{timestamp}.png"
+            filepath = os.path.join(temp_dir, filename)
+            
+            # スクリーンショットを保存
+            if self.driver:
+                try:
+                    self.driver.save_screenshot(filepath)
+                    # ファイルが実際に保存されたか確認
+                    if os.path.exists(filepath) and os.path.getsize(filepath) > 0:
+                        logger.info(f"Screenshot saved: {filepath}")
+                        return filepath
+                    else:
+                        logger.error(f"Screenshot file was not created or is empty: {filepath}")
+                        return ""
+                except Exception as e:
+                    logger.error(f"Failed to save screenshot: {str(e)}")
+                    return ""
+            else:
+                logger.warning("Driver not available for screenshot")
+                return ""
+        except Exception as e:
+            logger.error(f"Failed to save screenshot: {str(e)}")
+            return ""
+
     def _send_error_notification(self, error_type: str, error_info: Dict[str, Any], screenshot_paths: list[str], log_file_path: Optional[str] = None):
         """エラー通知メールを送信"""
         try:
+            logger.info(f"Preparing to send error notification email for: {error_type}")
             msg = MIMEMultipart()
             msg['Subject'] = f'Note Post Error: {error_type}'
             msg['From'] = self.smtp_email
@@ -123,27 +154,49 @@ class NotePoster:
             for screenshot_path in screenshot_paths:
                 if os.path.exists(screenshot_path):
                     try:
+                        logger.info(f"Attaching screenshot: {screenshot_path}")
+                        # ファイルの読み取り権限を確認
+                        if not os.access(screenshot_path, os.R_OK):
+                            logger.error(f"No read permission for screenshot: {screenshot_path}")
+                            continue
+                            
                         with open(screenshot_path, 'rb') as f:
                             img = MIMEImage(f.read())
                             img.add_header('Content-Disposition', 'attachment', filename=os.path.basename(screenshot_path))
                             msg.attach(img)
+                            logger.info(f"Successfully attached screenshot: {screenshot_path}")
                     except Exception as e:
                         logger.error(f"Failed to attach screenshot {screenshot_path}: {str(e)}")
+                else:
+                    logger.warning(f"Screenshot file not found: {screenshot_path}")
 
             # ログファイルを添付
-            if log_file_path and os.path.exists(log_file_path):
+            if log_file_path:
                 try:
-                    with open(log_file_path, 'rb') as f:
-                        part = MIMEApplication(f.read(),_subtype="octet-stream")
-                        part['Content-Disposition'] = f'attachment; filename="{os.path.basename(log_file_path)}"'
-                        msg.attach(part)
+                    log_file_path = os.path.abspath(log_file_path)
+                    logger.info(f"Attempting to attach log file: {log_file_path}")
+                    if os.path.exists(log_file_path):
+                        # ファイルの読み取り権限を確認
+                        if not os.access(log_file_path, os.R_OK):
+                            logger.error(f"No read permission for log file: {log_file_path}")
+                        else:
+                            with open(log_file_path, 'rb') as f:
+                                part = MIMEApplication(f.read(),_subtype="octet-stream")
+                                part['Content-Disposition'] = f'attachment; filename="{os.path.basename(log_file_path)}"'
+                                msg.attach(part)
+                                logger.info(f"Successfully attached log file: {log_file_path}")
+                    else:
+                        logger.warning(f"Log file not found: {log_file_path}")
                 except Exception as e:
                     logger.error(f"Failed to attach log file {log_file_path}: {str(e)}")
 
             # メール送信
             try:
-                with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+                logger.info("Connecting to SMTP server...")
+                with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=30) as smtp:
+                    logger.info("Logging in to SMTP server...")
                     smtp.login(self.smtp_email, self.smtp_password)
+                    logger.info("Sending email...")
                     smtp.send_message(msg)
                     logger.info(f"Error notification email sent to {self.notification_email}")
             except smtplib.SMTPAuthenticationError as e:
@@ -154,30 +207,13 @@ class NotePoster:
                 logger.error(f"メール送信エラー: {str(e)}")
             except Exception as e:
                 logger.error(f"メール送信中の予期せぬエラー: {str(e)}")
+                logger.error(f"エラーの種類: {type(e).__name__}")
+                logger.error(f"エラーの詳細: {str(e)}")
 
         except Exception as e:
             logger.error(f"メール通知送信処理で予期せぬエラーが発生: {str(e)}")
-
-    def _save_screenshot(self, error_type: str) -> str:
-        """スクリーンショットを保存し、保存先のパスを返す"""
-        try:
-            # 一時ディレクトリに保存
-            temp_dir = tempfile.gettempdir()
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"note_error_{error_type}_{timestamp}.png"
-            filepath = os.path.join(temp_dir, filename)
-            
-            # スクリーンショットを保存
-            if self.driver:
-                self.driver.save_screenshot(filepath)
-                logger.info(f"Screenshot saved: {filepath}")
-                return filepath
-            else:
-                logger.warning("Driver not available for screenshot")
-                return ""
-        except Exception as e:
-            logger.error(f"Failed to save screenshot: {str(e)}")
-            return ""
+            logger.error(f"エラーの種類: {type(e).__name__}")
+            logger.error(f"エラーの詳細: {str(e)}")
 
     def _collect_error_info(self) -> Dict[str, Any]:
         """エラー情報を収集"""
@@ -276,116 +312,114 @@ class NotePoster:
             logger.error(f"Failed to setup Chrome driver: {str(e)}")
             raise
 
-    def _wait_for_page_load(self, timeout: int = 5):
-        """ページの読み込み完了を待機"""
+    def _wait_for_page_load(self, timeout: int = 30):  # タイムアウトを30秒に延長
+        """ページの読み込みを待機"""
         try:
-            self.driver.execute_script("return document.readyState") == "complete"
-            time.sleep(1)  # 待機時間を延長
-        except Exception as e:
-            logger.error(f"Page load wait failed: {str(e)}")
+            WebDriverWait(self.driver, timeout).until(
+                lambda driver: driver.execute_script('return document.readyState') == 'complete'
+            )
+        except TimeoutException:
+            logger.warning(f"Page load timeout after {timeout} seconds")
+            self._check_memory_usage()
+            gc.collect()
 
     def _check_login_error(self) -> Optional[str]:
-        """ログインエラーメッセージを確認"""
+        """ログインエラーの確認"""
         try:
-            error_messages = [
-                "//div[contains(@class, 'error-message')]",
-                "//div[contains(@class, 'alert')]",
-                "//p[contains(@class, 'error')]"
-            ]
-            for xpath in error_messages:
-                try:
-                    error_element = self.driver.find_element(By.XPATH, xpath)
-                    if error_element.is_displayed():
-                        return error_element.text
-                except NoSuchElementException:
-                    continue
+            # エラーメッセージの要素を確認
+            error_elements = self.driver.find_elements(By.CSS_SELECTOR, '.error-message, .alert-danger')
+            if error_elements:
+                return error_elements[0].text
             return None
         except Exception as e:
-            logger.error(f"Failed to check login error: {str(e)}")
+            logger.error(f"Error checking login status: {str(e)}")
             return None
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
     def _login(self):
-        """Noteにログイン（リトライ処理付き）"""
+        """Noteへのログイン処理"""
         try:
             logger.info("Attempting to login to Note")
+            self._setup_driver()
+            
+            # ログインページに移動
             logger.info("Navigating to login page...")
             self.driver.get("https://note.com/login")
-            # ログインページが完全に表示されるまで待機 (メールアドレス入力欄で確認)
-            WebDriverWait(self.driver, 20).until(EC.presence_of_element_located((By.ID, "email")))
+            self._wait_for_page_load(timeout=30)  # タイムアウトを30秒に延長
+            
+            # メモリ使用量をチェック
             self._check_memory_usage()
             
+            # クッキーをクリア
             logger.info("Clearing cookies...")
             self.driver.delete_all_cookies()
             
-            # ログインフォームの入力
+            # メールアドレスを入力
             logger.info("Entering email...")
-            email_input = self.wait.until(EC.presence_of_element_located((By.ID, "email")))
-            email_input.clear()
-            email_input.send_keys(self.email)
-            time.sleep(1) # 待機時間を延長
+            email_field = WebDriverWait(self.driver, 20).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, 'input[type="email"]'))
+            )
+            email_field.clear()
+            email_field.send_keys(self.email)
+            
+            # メモリ使用量をチェック
             self._check_memory_usage()
             
+            # パスワードを入力
             logger.info("Entering password...")
-            password_input = self.wait.until(EC.presence_of_element_located((By.ID, "password")))
-            password_input.clear()
-            password_input.send_keys(self.password)
-            time.sleep(1) # 待機時間を延長
+            password_field = WebDriverWait(self.driver, 20).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, 'input[type="password"]'))
+            )
+            password_field.clear()
+            password_field.send_keys(self.password)
+            
+            # メモリ使用量をチェック
             self._check_memory_usage()
             
-            # ログインボタンを押す前にスクリーンショットを保存
+            # ログインボタンをクリックする前のスクリーンショットを保存
             self._login_button_screenshot_path = self._save_screenshot('login_button_before')
-
-            # ログインボタンのクリック
+            
+            # ログインボタンをクリック
             logger.info("Clicking login button...")
-            login_button = self.wait.until(EC.element_to_be_clickable((By.XPATH, '//button[contains(.,"ログイン")]')))
+            login_button = WebDriverWait(self.driver, 20).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[type="submit"]'))
+            )
             login_button.click()
             
-            # ログイン完了の待機（複数の要素をチェック）
+            # ログイン完了を待機
             logger.info("Waiting for login completion...")
             try:
-                self.wait.until(EC.presence_of_element_located((By.XPATH, '//div[contains(@class, "note-header")]')))
+                # ログイン成功の判定条件を緩和
+                WebDriverWait(self.driver, 60).until(  # タイムアウトを60秒に延長
+                    lambda driver: any([
+                        'mypage' in driver.current_url,
+                        'dashboard' in driver.current_url,
+                        driver.find_elements(By.CSS_SELECTOR, '.note-header-user'),
+                        driver.find_elements(By.CSS_SELECTOR, '.note-header-menu')
+                    ])
+                )
+                logger.info("Login successful")
+                return True
             except TimeoutException:
-                # エラーメッセージを確認
-                error_message = self._check_login_error()
-                if error_message:
-                    logger.error(f"Login error message: {error_message}")
-                    self._save_screenshot('login_error')
-                    raise ValueError(f"Login failed: {error_message}")
+                # エラー情報を収集
+                error_info = self._collect_error_info()
+                logger.error(f"Login failed. Status: {error_info}")
                 
-                # 代替の要素をチェック
-                success = False
-                for selector in [
-                    '//div[contains(@class, "note-header")]',
-                    '//div[contains(@class, "note-header__user")]',
-                    '//div[contains(@class, "note-header__menu")]',
-                    '//a[contains(@href, "/mypage")]'
-                ]:
-                    try:
-                        self.wait.until(EC.presence_of_element_located((By.XPATH, selector)))
-                        success = True
-                        break
-                    except TimeoutException:
-                        continue
+                # エラー通知メールを送信
+                screenshot_paths = []
+                if self._login_button_screenshot_path:
+                    screenshot_paths.append(self._login_button_screenshot_path)
+                if error_info.get('screenshot_path'):
+                    screenshot_paths.append(error_info['screenshot_path'])
+                self._send_error_notification('login_failed', error_info, screenshot_paths, 'note_poster.log')
                 
-                if not success:
-                    error_info = self._collect_error_info()
-                    logger.error(f"Login failed. Status: {error_info}")
-                    raise TimeoutException("Could not confirm successful login")
-            
-            logger.info("Successfully logged in to Note")
-            
-        except TimeoutException as e:
-            error_info = self._collect_error_info()
-            logger.error(f"Login timeout. Status: {error_info}")
-            raise
-        except WebDriverException as e:
-            error_info = self._collect_error_info()
-            logger.error(f"WebDriver error. Status: {error_info}")
-            raise
+                # リトライのために例外を発生
+                raise Exception("Login failed")
+                
         except Exception as e:
-            error_info = self._collect_error_info()
-            logger.error(f"Unexpected error during login. Status: {error_info}")
+            logger.error(f"Login error: {str(e)}")
+            self._check_memory_usage()
+            gc.collect()
             raise
             
     def post_article(self, article_body: str, title: str) -> Optional[str]:
