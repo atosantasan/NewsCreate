@@ -38,7 +38,7 @@ class TwitterBot:
         
         service = Service(ChromeDriverManager().install())
         self.driver = webdriver.Chrome(service=service, options=options)
-        self.wait = WebDriverWait(self.driver, 20)
+        self.wait = WebDriverWait(self.driver, 40)
         self.modal_wait = WebDriverWait(self.driver, 5)
         
     def _handle_security_modal(self):
@@ -55,6 +55,7 @@ class TwitterBot:
         """Twitterにログイン"""
         try:
             logger.info("Attempting to login to Twitter")
+            self._setup_driver()
             self.driver.get('https://twitter.com/i/flow/login')
             
             # ユーザー名/メールアドレス入力
@@ -82,6 +83,9 @@ class TwitterBot:
             
         except Exception as e:
             logger.error(f"Login failed: {str(e)}")
+            if self.driver:
+                self.driver.save_screenshot("twitter_login_error_screenshot.png")
+                logger.info("Login error screenshot saved as twitter_login_error_screenshot.png")
             raise
             
     def post_tweet(self, title: str, url: str) -> bool:
@@ -98,7 +102,6 @@ class TwitterBot:
         try:
             logger.info(f"Starting tweet posting process for title: {title}")
             self._setup_driver()
-            self._handle_security_modal()
             self._login()
             
             # ツイート作成画面を開く
@@ -115,21 +118,31 @@ class TwitterBot:
             tweet_button.click()
             
             # 投稿完了の待機
-            time.sleep(5)
+            time.sleep(10)
             logger.info("Tweet posted successfully")
             return True
             
         except Exception as e:
             logger.error(f"Failed to post tweet: {str(e)}")
             if self.driver:
-                self.driver.save_screenshot("twitter_error_screenshot.png")
-                logger.info("Error screenshot saved as twitter_error_screenshot.png")
+                self.driver.save_screenshot("twitter_post_error_screenshot.png")
+                logger.info("Error screenshot saved as twitter_post_error_screenshot.png")
             return False
             
         finally:
             if self.driver:
                 self.driver.quit()
+                logger.info("Driver quit.")
 
 if __name__ == "__main__":
+    # 環境変数からタイトルとURLを取得するか、デフォルト値を設定
+    test_title = os.getenv("TEST_TWEET_TITLE", "テスト投稿タイトル")
+    test_url = os.getenv("TEST_TWEET_URL", "https://example.com")
+
     bot = TwitterBot()
-    bot.post_tweet("ようやくできる", "AI情報の投稿")
+    success = bot.post_tweet(test_title, test_url)
+
+    if success:
+        logger.info("ツイート投稿処理が成功しました。")
+    else:
+        logger.error("ツイート投稿処理が失敗しました。")
