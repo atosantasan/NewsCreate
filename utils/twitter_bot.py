@@ -8,7 +8,7 @@ from selenium.common.exceptions import TimeoutException, WebDriverException, NoS
 import time
 import os
 import logging
-from typing import Optional
+from typing import Optional, Dict, Any
 from dotenv import load_dotenv
 import gc
 import signal
@@ -17,6 +17,12 @@ import psutil
 from tenacity import retry, stop_after_attempt, wait_exponential
 import tempfile
 from datetime import datetime
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.image import MIMEImage
+from email.mime.multipart import MIMEMultipart
+from email.mime.application import MIMEApplication
+from email import encoders
 
 # ログ設定を追加
 logging.basicConfig(
@@ -41,8 +47,16 @@ class TwitterBot:
         self.twitter_user_id = os.getenv('TWITTER_USER_ID')
         self.twitter_password = os.getenv('TWITTER_PASSWORD')
         
+        # メール通知用の環境変数
+        self.smtp_email = os.getenv("SMTP_EMAIL")
+        self.smtp_password = os.getenv("SMTP_PASSWORD")
+        self.notification_email = os.getenv("NOTIFICATION_EMAIL")
+        
         if not all([self.twitter_id, self.twitter_user_id, self.twitter_password]):
             raise ValueError("TWITTER_ID, TWITTER_USER_ID, and TWITTER_PASSWORD are required")
+        # メール通知用の環境変数もチェック（必須とするか任意とするかは要件次第）
+        # if not all([self.smtp_email, self.smtp_password, self.notification_email]):
+        #     logger.warning("SMTP_EMAIL, SMTP_PASSWORD, and NOTIFICATION_EMAIL are not set. Email notifications will be disabled.")
             
         self.driver = None
         self.wait = None
@@ -112,6 +126,81 @@ class TwitterBot:
             logger.error(f"Failed to save screenshot: {str(e)}")
             return ""
             
+    def _send_notification_email(self, subject: str, body: str, screenshot_paths: list[str], log_file_path: Optional[str] = None):
+        """通知メールを送信"""
+        if not all([self.smtp_email, self.smtp_password, self.notification_email]):
+            logger.warning("SMTP credentials not set. Skipping email notification.")
+            return
+            
+        try:
+            logger.info(f"Preparing to send notification email: {subject}")
+            msg = MIMEMultipart()
+            msg['Subject'] = subject
+            msg['From'] = self.smtp_email
+            msg['To'] = self.notification_email
+
+            msg.attach(MIMEText(body, 'plain'))
+
+            # スクリーンショットを添付
+            for screenshot_path in screenshot_paths:
+                if os.path.exists(screenshot_path):
+                    try:
+                        logger.info(f"Attaching screenshot: {screenshot_path}")
+                        if not os.access(screenshot_path, os.R_OK):
+                            logger.error(f"No read permission for screenshot: {screenshot_path}")
+                            continue
+                            
+                        with open(screenshot_path, 'rb') as f:
+                            img = MIMEImage(f.read())
+                            img.add_header('Content-Disposition', 'attachment', filename=os.path.basename(screenshot_path))
+                            msg.attach(img)
+                            logger.info(f"Successfully attached screenshot: {screenshot_path}")
+                    except Exception as e:
+                        logger.error(f"Failed to attach screenshot {screenshot_path}: {str(e)}")
+                else:
+                    logger.warning(f"Screenshot file not found: {screenshot_path}")
+
+            # ログファイルを添付
+            if log_file_path and os.path.exists(log_file_path):
+                try:
+                    log_file_path = os.path.abspath(log_file_path)
+                    logger.info(f"Attempting to attach log file: {log_file_path}")
+                    if os.access(log_file_path, os.R_OK):
+                        with open(log_file_path, 'rb') as f:
+                            part = MIMEApplication(f.read(),_subtype="octet-stream")
+                            part.set_payload((f.read()))
+                            encoders.encode_base64(part)
+                            part.add_header('Content-Disposition', 'attachment', filename=os.path.basename(log_file_path))
+                            msg.attach(part)
+                            logger.info(f"Successfully attached log file: {log_file_path}")
+                    else:
+                        logger.error(f"No read permission for log file: {log_file_path}")
+                except Exception as e:
+                    logger.error(f"Failed to attach log file {log_file_path}: {str(e)}")
+            elif log_file_path:
+                 logger.warning(f"Log file not found for attachment: {log_file_path}")
+
+            # メール送信
+            try:
+                logger.info("Connecting to SMTP server...")
+                with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=30) as smtp:
+                    logger.info("Logging in to SMTP server...")
+                    smtp.login(self.smtp_email, self.smtp_password)
+                    logger.info("Sending email...")
+                    smtp.send_message(msg)
+                    logger.info(f"Notification email sent to {self.notification_email}")
+            except smtplib.SMTPAuthenticationError as e:
+                logger.error("Gmail認証エラー: アプリパスワードが正しく設定されていない可能性があります。")
+                logger.error(f"エラー詳細: {str(e)}")
+                logger.error("Gmailの2段階認証を有効にし、アプリパスワードを生成してください。")
+            except smtplib.SMTPException as e:
+                logger.error(f"メール送信エラー: {str(e)}")
+            except Exception as e:
+                logger.error(f"メール送信中の予期せぬエラー: {str(e)}")
+
+        except Exception as e:
+            logger.error(f"メール通知送信処理で予期せぬエラーが発生: {str(e)}")
+            
     def _wait_for_page_load(self, timeout: int = 30):
         """ページの読み込みを待機"""
         try:
@@ -177,7 +266,7 @@ class TwitterBot:
             options.add_argument("--high-dpi-support=1")
             
             self.driver = webdriver.Chrome(options=options)
-            self.wait = WebDriverWait(self.driver, 40)
+            self.wait = WebDriverWait(self.driver, 90) # 待機時間を90秒に設定
             self.modal_wait = WebDriverWait(self.driver, 5)
             logger.info("Chrome driver initialized for Twitter bot.")
             
@@ -186,6 +275,8 @@ class TwitterBot:
             
         except Exception as e:
             logger.error(f"Failed to setup Chrome driver: {str(e)}")
+            # ドライバー初期化失敗時もメール通知
+            self._send_error_notification("Driver Setup Failed", {'error': str(e)}, [])
             raise
             
     def _apply_stealth_script(self):
@@ -215,12 +306,14 @@ class TwitterBot:
         """Twitterにログイン"""
         try:
             logger.info("Attempting to login to Twitter")
-            self._setup_driver()
+            # _setup_driverはpost_tweetではなく_login内で呼び出す
+            # self._setup_driver()
+            
             self.driver.get('https://twitter.com/i/flow/login')
-            self.driver.set_page_load_timeout(60)
+            self.driver.set_page_load_timeout(90) # ページ読み込みタイムアウトも90秒に延長
             
             # ページの読み込み完了を待機
-            self._wait_for_page_load(timeout=60)
+            self._wait_for_page_load(timeout=90) # ページ読み込み待機も90秒に延長
             
             # メモリ使用量のチェック
             self._check_memory_usage()
@@ -255,6 +348,7 @@ class TwitterBot:
                 
             # パスワード入力
             logger.info("Entering password...")
+            # XPathをより specific にする可能性あり。今回は現状維持。
             password_input = self.wait.until(EC.presence_of_element_located((By.XPATH, '//input[@type="password"] | //input[@name="password"]')))
             password_input.clear()
             for char in self.twitter_password:
@@ -266,57 +360,131 @@ class TwitterBot:
             # ログイン完了の待機
             logger.info("Waiting for login completion...")
             try:
+                # URLがログインページ以外に遷移するのを待機
+                logger.info(f"Waiting for URL to change from: {self.driver.current_url}")
+                WebDriverWait(self.driver, 90).until( # 待機時間を90秒に延長
+                    EC.url_changes('https://x.com/i/flow/login')
+                )
+                logger.info(f"URL changed to: {self.driver.current_url}")
+                
+                # ページ読み込み完了を待機
+                self._wait_for_page_load(timeout=60) # ページ読み込み待機
+                logger.info("Page finished loading after URL change.")
+                
+                # 要素出現の前に短い静的待機
+                time.sleep(5)
+                logger.info("Finished short static wait after page load.")
+
                 # ツイート入力エリアまたはホームボタンの出現を待機
+                logger.info("Waiting for post-login elements (tweet area or home button)...")
                 self.wait.until(
                     EC.presence_of_element_located((By.XPATH, '//div[@data-testid="tweetTextarea_0"] | //div[@aria-label="Home timeline"] | //a[@data-testid="AppTabBar_Home_Link"]'))
                 )
-                logger.info("Successfully logged in to Twitter")
+                logger.info("Successfully logged in to Twitter and post-login elements found.")
             except TimeoutException:
-                logger.error("Timeout waiting for login completion elements.")
-                raise TimeoutException("Timeout waiting for login completion elements.") # タイムアウト時に例外を再発生
+                logger.error("Timeout waiting for login completion elements or URL change.")
+                # タイムアウト時のスクリーンショットとメール通知
+                screenshot_path = self._save_screenshot("login_completion_timeout")
+                error_info = {
+                    'url': self.driver.current_url if self.driver else "N/A",
+                    'error': "Timeout waiting for login completion elements or URL change.",
+                    'screenshot_path': screenshot_path
+                }
+                self._send_error_notification("Login Completion Timeout", error_info, [screenshot_path] if screenshot_path else [], "twitter_bot.log")
+                raise TimeoutException("Timeout waiting for login completion elements or URL change.")
+            except Exception as e:
+                logger.error(f"An error occurred during login completion wait: {str(e)}")
+                # ログイン完了待機中の予期せぬエラー時のスクリーンショットとメール通知
+                screenshot_path = self._save_screenshot("login_completion_error")
+                error_info = {
+                    'url': self.driver.current_url if self.driver else "N/A",
+                    'error': str(e),
+                    'screenshot_path': screenshot_path
+                }
+                self._send_error_notification("Login Completion Error", error_info, [screenshot_path] if screenshot_path else [], "twitter_bot.log")
+                raise
             
         except Exception as e:
             logger.error(f"Login failed: {str(e)}")
             self._check_memory_usage()
-            screenshot_path = self._save_screenshot("login_error")
+            screenshot_path = self._save_screenshot("login_general_error") # エラータイプ名を変更
             if screenshot_path:
                 logger.info(f"Login error screenshot saved: {screenshot_path}")
-            # エラー時の詳細情報を追加
             current_url = self.driver.current_url if self.driver else "N/A"
-            page_source = self.driver.page_source if self.driver else "N/A"
             logger.error(f"Login failed at URL: {current_url}")
-            # ページのソースは長くなる可能性があるため、必要に応じてコメントアウトや一部表示に調整
-            # logger.error(f"Page source: {page_source[:500]}...") 
+            
+            # ログイン失敗時のメール通知（リトライが発生しない初回の失敗も含む）
+            error_info = {
+                'url': current_url,
+                'error': str(e),
+                'screenshot_path': screenshot_path
+            }
+            self._send_error_notification("Login Failed", error_info, [screenshot_path] if screenshot_path else [], "twitter_bot.log")
+            
             raise # 例外を再発生させて、リトライ処理に委ねる
             
+    # エラー通知用のラッパーメソッド
+    def _send_error_notification(self, error_type: str, error_info: Dict[str, Any], screenshot_paths: list[str], log_file_path: Optional[str] = None):
+        """エラー通知メールを送信するためのラッパー"""
+        subject = f'Twitter Bot Error: {error_type}'
+        body = f"""
+エラーが発生しました。
+
+エラータイプ: {error_type}
+発生時刻: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+URL: {error_info.get('url', 'N/A')}
+エラー詳細: {error_info.get('error', 'N/A')}
+メモリ使用量: {psutil.Process(os.getpid()).memory_percent():.1f}%
+"""
+        self._send_notification_email(subject, body, screenshot_paths, log_file_path)
+        
+
     def post_tweet(self, title: str, url: str) -> bool:
         """ツイートを投稿する"""
         try:
             logger.info(f"Starting tweet posting process for title: {title}")
             # _loginメソッドは内部で_setup_driverを呼び出し、ログインに失敗した場合は例外を発生させます。
             # 成功した場合のみ、以下の処理に進みます。
+            # post_tweet内で_setup_driverを呼ぶと、リトライ時に毎回新しいドライバーが起動してしまうため、
+            # _loginメソッドのretryデコレータがドライバーの再利用を前提としていない挙動になります。
+            # _loginメソッドの前に_setup_driverを呼ぶように修正します。
+            self._setup_driver()
+            logger.info("Driver setup complete in post_tweet")
+            
             self._login()
             
             # ツイート作成画面を開く
             logger.info("Opening tweet composition screen...")
+            # ログイン後の画面が安定するまで待機
+            time.sleep(5) # ログイン後の静的待機を追加
+            
             try:
                 post_button = self.wait.until(EC.element_to_be_clickable((By.XPATH, '//a[@aria-label="Post"]')))
                 post_button.click()
             except TimeoutException:
                 logger.error("Timeout waiting for tweet post button.")
-                self._save_screenshot("post_button_timeout")
+                screenshot_path = self._save_screenshot("post_button_timeout")
+                error_info = {'url': self.driver.current_url if self.driver else "N/A", 'error': "Timeout waiting for tweet post button.", 'screenshot_path': screenshot_path}
+                self._send_error_notification("Tweet Post Button Timeout", error_info, [screenshot_path] if screenshot_path else [], "twitter_bot.log")
                 raise TimeoutException("Timeout waiting for tweet post button.")
             except NoSuchElementException:
                 logger.error("Tweet post button not found.")
-                self._save_screenshot("post_button_not_found")
+                screenshot_path = self._save_screenshot("post_button_not_found")
+                error_info = {'url': self.driver.current_url if self.driver else "N/A", 'error': "Tweet post button not found.", 'screenshot_path': screenshot_path}
+                self._send_error_notification("Tweet Post Button Not Found", error_info, [screenshot_path] if screenshot_path else [], "twitter_bot.log")
                 raise NoSuchElementException("Tweet post button not found.")
             except Exception as e:
                 logger.error(f"Error clicking tweet post button: {str(e)}")
-                self._save_screenshot("post_button_error")
+                screenshot_path = self._save_screenshot("post_button_error")
+                error_info = {'url': self.driver.current_url if self.driver else "N/A", 'error': str(e), 'screenshot_path': screenshot_path}
+                self._send_error_notification("Tweet Post Button Error", error_info, [screenshot_path] if screenshot_path else [], "twitter_bot.log")
                 raise
             
             # ツイート内容の入力
             logger.info("Entering tweet content...")
+            # ツイート作成モーダルが表示されるのを待機
+            time.sleep(3) # モーダル表示の静的待機を追加
+            
             try:
                 tweet_box = self.wait.until(EC.presence_of_element_located((By.XPATH, '//div[@data-testid="tweetTextarea_0"]')))
                 tweet_content = f"{title}\n{url}"
@@ -324,15 +492,21 @@ class TwitterBot:
                 time.sleep(2)
             except TimeoutException:
                 logger.error("Timeout waiting for tweet text area.")
-                self._save_screenshot("tweet_area_timeout")
+                screenshot_path = self._save_screenshot("tweet_area_timeout")
+                error_info = {'url': self.driver.current_url if self.driver else "N/A", 'error': "Timeout waiting for tweet text area.", 'screenshot_path': screenshot_path}
+                self._send_error_notification("Tweet Area Timeout", error_info, [screenshot_path] if screenshot_path else [], "twitter_bot.log")
                 raise TimeoutException("Timeout waiting for tweet text area.")
             except NoSuchElementException:
                 logger.error("Tweet text area not found.")
-                self._save_screenshot("tweet_area_not_found")
+                screenshot_path = self._save_screenshot("tweet_area_not_found")
+                error_info = {'url': self.driver.current_url if self.driver else "N/A", 'error': "Tweet text area not found.", 'screenshot_path': screenshot_path}
+                self._send_error_notification("Tweet Area Not Found", error_info, [screenshot_path] if screenshot_path else [], "twitter_bot.log")
                 raise NoSuchElementException("Tweet text area not found.")
             except Exception as e:
                 logger.error(f"Error entering tweet content: {str(e)}")
-                self._save_screenshot("tweet_content_error")
+                screenshot_path = self._save_screenshot("tweet_content_error")
+                error_info = {'url': self.driver.current_url if self.driver else "N/A", 'error': str(e), 'screenshot_path': screenshot_path}
+                self._send_error_notification("Tweet Content Error", error_info, [screenshot_path] if screenshot_path else [], "twitter_bot.log")
                 raise
             
             # 投稿ボタンのクリック
@@ -343,15 +517,21 @@ class TwitterBot:
                 tweet_button.click()
             except TimeoutException:
                 logger.error("Timeout waiting for final tweet button.")
-                self._save_screenshot("final_tweet_button_timeout")
+                screenshot_path = self._save_screenshot("final_tweet_button_timeout")
+                error_info = {'url': self.driver.current_url if self.driver else "N/A", 'error': "Timeout waiting for final tweet button.", 'screenshot_path': screenshot_path}
+                self._send_error_notification("Final Tweet Button Timeout", error_info, [screenshot_path] if screenshot_path else [], "twitter_bot.log")
                 raise TimeoutException("Timeout waiting for final tweet button.")
             except NoSuchElementException:
                 logger.error("Final tweet button not found.")
-                self._save_screenshot("final_tweet_button_not_found")
+                screenshot_path = self._save_screenshot("final_tweet_button_not_found")
+                error_info = {'url': self.driver.current_url if self.driver else "N/A", 'error': "Final tweet button not found.", 'screenshot_path': screenshot_path}
+                self._send_error_notification("Final Tweet Button Not Found", error_info, [screenshot_path] if screenshot_path else [], "twitter_bot.log")
                 raise NoSuchElementException("Final tweet button not found.")
             except Exception as e:
                 logger.error(f"Error clicking final tweet button: {str(e)}")
-                self._save_screenshot("final_tweet_button_error")
+                screenshot_path = self._save_screenshot("final_tweet_button_error")
+                error_info = {'url': self.driver.current_url if self.driver else "N/A", 'error': str(e), 'screenshot_path': screenshot_path}
+                self._send_error_notification("Final Tweet Button Error", error_info, [screenshot_path] if screenshot_path else [], "twitter_bot.log")
                 raise
             
             # 投稿完了の待機 (成功メッセージやツイートが表示されるのを待つなど、より具体的な条件にすることも検討)
@@ -359,19 +539,34 @@ class TwitterBot:
             time.sleep(10) # 一旦静的な待機
             # TODO: ツイートが成功したことを示す要素や画面遷移を待つ条件を追加
             logger.info("Tweet posting process finished (Success confirmation might be needed).")
+            
+            # 正常終了時も通知メールを送信
+            success_info = {
+                 'url': self.driver.current_url if self.driver else "N/A",
+                 'title': title,
+                 'memory_usage': psutil.Process(os.getpid()).memory_percent()
+            }
+            self._send_notification_email('Twitter Post Success', 'ツイート投稿が正常に完了しました。', [], "twitter_bot.log")
+
             return True
             
         except Exception as e:
-            logger.error(f"Failed to post tweet: {str(e)}")
+            logger.error(f"Failed to post tweet. Error: {str(e)}")
             self._check_memory_usage()
-            screenshot_path = self._save_screenshot("post_tweet_error") # エラータイプ名を変更
+            screenshot_path = self._save_screenshot("post_tweet_error")
             if screenshot_path:
                 logger.info(f"Error screenshot saved: {screenshot_path}")
-            # エラー時の詳細情報を追加
             current_url = self.driver.current_url if self.driver else "N/A"
-            page_source = self.driver.page_source if self.driver else "N/A"
             logger.error(f"Tweet post failed at URL: {current_url}")
-            # logger.error(f"Page source: {page_source[:500]}...")
+            
+            # 投稿失敗時のメール通知
+            error_info = {
+                'url': current_url,
+                'error': str(e),
+                'screenshot_path': screenshot_path
+            }
+            self._send_error_notification("Tweet Post Failed", error_info, [screenshot_path] if screenshot_path else [], "twitter_bot.log")
+            
             return False
             
         finally:
