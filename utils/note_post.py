@@ -60,6 +60,9 @@ class NotePoster:
         
         self._login_button_screenshot_path: Optional[str] = None
         
+        self.logger = logger
+        logger.info("NotePoster instance initialized.")
+        
     def _setup_signal_handlers(self):
         """シグナルハンドラの設定"""
         def signal_handler(signum, frame):
@@ -257,7 +260,7 @@ class NotePoster:
         """Seleniumドライバーの初期化"""
         try:
             options = Options()
-            options.add_argument("--headless=new")
+            options.add_argument("--headless=new")  # ヘッドレスモードを有効化
             options.add_argument("--no-sandbox")
             options.add_argument("--disable-dev-shm-usage")
             options.add_argument("--disable-gpu")
@@ -311,8 +314,15 @@ class NotePoster:
             options.add_experimental_option("useAutomationExtension", False)
             
             self.driver = webdriver.Chrome(options=options)
+            logger.info("Chrome driver initialized.")
+
+            logger.info("Initializing WebDriverWait...")
             self.wait = WebDriverWait(self.driver, 15)  # タイムアウトを15秒に延長
+            logger.info("WebDriverWait initialized.")
+
+            logger.info("Applying stealth script...")
             self._apply_stealth_script()
+            logger.info("Stealth script applied.")
         except Exception as e:
             logger.error(f"Failed to setup Chrome driver: {str(e)}")
             raise
@@ -340,168 +350,166 @@ class NotePoster:
             logger.error(f"Error checking login status: {str(e)}")
             return None
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
+    # @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10)) # デコレーターをコメントアウト
     def _login(self):
-        """Noteへのログイン処理"""
+        """Noteにログインする"""
         try:
-            logger.info("Attempting to login to Note")
-            self._setup_driver()
-            
-            # ログインページに移動
-            logger.info("Navigating to login page...")
+            self.logger.info("Entering _login method") # デバッグログを追加
+            self.logger.info("Attempting to login to Note")
+            self.logger.info("Navigating to login page...")
             self.driver.get("https://note.com/login")
-            self._wait_for_page_load(timeout=30)  # タイムアウトを30秒に延長
+            self.driver.set_page_load_timeout(60)  # ページ読み込みタイムアウトを60秒に延長
             
-            # メモリ使用量をチェック
-            self._check_memory_usage()
+            # ページの読み込み完了を待機
+            self._wait_for_page_load(timeout=60) # ページ読み込み待機を追加
+            
+            # メモリ使用量のログ
+            self._check_memory_usage() # メソッド名を修正
             
             # クッキーをクリア
-            logger.info("Clearing cookies...")
+            self.logger.info("Clearing cookies...")
             self.driver.delete_all_cookies()
             
-            # メールアドレスを入力
-            logger.info("Entering email...")
-            email_field = WebDriverWait(self.driver, 20).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, 'input[type="email"]'))
+            # メールアドレス入力
+            self.logger.info("Entering email...")
+            email_field = WebDriverWait(self.driver, 30).until(
+                EC.presence_of_element_located((By.ID, "email"))
             )
+            # より自然な入力動作を追加
             email_field.clear()
-            email_field.send_keys(self.email)
+            for char in self.email:
+                email_field.send_keys(char)
+                time.sleep(0.1)  # 文字入力間に小さな遅延を追加
+            time.sleep(2)  # 入力後の待機時間を追加
             
-            # メモリ使用量をチェック
-            self._check_memory_usage()
-            
-            # パスワードを入力
-            logger.info("Entering password...")
-            password_field = WebDriverWait(self.driver, 20).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, 'input[type="password"]'))
+            # パスワード入力
+            self.logger.info("Entering password...")
+            password_field = WebDriverWait(self.driver, 30).until(
+                EC.presence_of_element_located((By.ID, "password"))
             )
+            # より自然な入力動作を追加
             password_field.clear()
-            password_field.send_keys(self.password)
-            
-            # メモリ使用量をチェック
-            self._check_memory_usage()
-            
-            # ログインボタンをクリックする前のスクリーンショットを保存
-            self._login_button_screenshot_path = self._save_screenshot('login_button_before')
-            
-            # ログインボタンをクリック
-            logger.info("Clicking login button...")
-            login_button = WebDriverWait(self.driver, 20).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[type="submit"]'))
+            for char in self.password:
+                password_field.send_keys(char)
+                time.sleep(0.1)  # 文字入力間に小さな遅延を追加
+            time.sleep(2)  # 入力後の待機時間を追加
+
+            # パスワードフィールドからフォーカスを外すために、メールアドレスフィールドをクリック
+            email_field = WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.ID, "email"))
             )
+            email_field.click()
+            time.sleep(1) # クリック後の短い待機
+
+            # ログインボタンがクリック可能になるまで待機
+            self.logger.info("Waiting for login button to be clickable...")
+            login_button = WebDriverWait(self.driver, 30).until( # 待機時間を30秒に設定
+                EC.element_to_be_clickable((By.XPATH, "//button[contains(., 'ログイン')]"))
+            )
+            self.logger.info("Login button is clickable. Clicking login button...")
+            time.sleep(1)  # クリック前の待機時間を追加
             login_button.click()
             
-            # ログイン完了を待機
-            logger.info("Waiting for login completion...")
-            try:
-                # ログイン成功の判定条件を緩和
-                WebDriverWait(self.driver, 60).until(  # タイムアウトを60秒に延長
-                    lambda driver: any([
-                        'mypage' in driver.current_url,
-                        'dashboard' in driver.current_url,
-                        driver.find_elements(By.CSS_SELECTOR, '.note-header-user'),
-                        driver.find_elements(By.CSS_SELECTOR, '.note-header-menu')
-                    ])
-                )
-                logger.info("Login successful")
-                return True
-            except TimeoutException:
-                # エラー情報を収集
-                error_info = self._collect_error_info()
-                logger.error(f"Login failed. Status: {error_info}")
-                
-                # エラー通知メールを送信
-                screenshot_paths = []
-                if self._login_button_screenshot_path:
-                    screenshot_paths.append(self._login_button_screenshot_path)
-                if error_info.get('screenshot_path'):
-                    screenshot_paths.append(error_info['screenshot_path'])
-                self._send_error_notification('login_failed', error_info, screenshot_paths, 'note_poster.log')
-                
-                # リトライのために例外を発生
-                raise Exception("Login failed")
-                
-        except TimeoutException as e:
-            logger.error(f"Login timeout: {str(e)}")
-            self._check_memory_usage()
-            gc.collect()
-            # TimeoutExceptionの場合もエラー情報を収集し、メール送信
-            error_info = self._collect_error_info()
-            logger.error(f"Login timeout. Status: {error_info}. Exception: {str(e)}") # 再度ログ出力と例外情報
-            screenshot_paths = []
-            if self._login_button_screenshot_path and os.path.exists(self._login_button_screenshot_path):
-                 screenshot_paths.append(self._login_button_screenshot_path)
-            if error_info.get('screenshot_path') and os.path.exists(error_info['screenshot_path']):
-                 screenshot_paths.append(error_info['screenshot_path'])
-            self._send_error_notification('login_timeout', error_info, screenshot_paths, 'note_poster.log')
-            raise
-        except WebDriverException as e:
-            logger.error(f"WebDriver error during login: {e.msg}") # WebDriverエラーメッセージをログ出力
-            logger.error(f"WebDriver Stacktrace:\n{e.stacktrace}") # スタックトレースもログ出力
-            self._check_memory_usage()
-            gc.collect()
-            # WebDriverExceptionの場合もエラー情報を収集し、メール送信
-            error_info = self._collect_error_info()
-            logger.error(f"WebDriver error during login. Status: {error_info}. Exception: {e.msg}") # 再度ログ出力と例外情報
-            screenshot_paths = []
-            # _save_screenshotはエラーが発生したtryブロック内では実行されないため、既に保存済みのログイン前SSのみ取得
-            if self._login_button_screenshot_path and os.path.exists(self._login_button_screenshot_path):
-                 screenshot_paths.append(self._login_button_screenshot_path)
-            # エラー情報収集時のスクリーンショットは_collect_error_info内で取得されるが、ここではログイン前SSを確実に含める
-            if error_info.get('screenshot_path') and os.path.exists(error_info['screenshot_path']):
-                 screenshot_paths.append(error_info['screenshot_path'])
+            # ログイン完了の確認（タイムアウトを90秒に延長）
+            self.logger.info("Waiting for login to complete...")
+            WebDriverWait(self.driver, 90).until(
+                # ログイン後のURLまたは要素の出現を待機
+                lambda driver: any([ # ログイン後に表示される要素の出現を待機
+                    bool(driver.find_elements(By.CSS_SELECTOR, 'button.o-navbarPrimary__userIconButton')), # ユーザーアイコンボタンが出現するか
+                    bool(driver.find_elements(By.CSS_SELECTOR, 'button.a-button[aria-label="投稿"]')) # 投稿ボタンが出現するか
+                ])
+            )
             
-            self._send_error_notification('webdriver_error', error_info, screenshot_paths, 'note_poster.log')
-            raise
+            self.logger.info("Login successful")
+            return True
+            
         except Exception as e:
-            logger.error(f"Unexpected error during login: {str(e)}")
+            self.logger.error(f"Login timeout: {str(e)}")
             self._check_memory_usage()
-            gc.collect()
-            # その他の予期せぬエラーの場合もエラー情報を収集し、メール送信
-            error_info = self._collect_error_info()
-            logger.error(f"Unexpected error during login. Status: {error_info}. Exception: {str(e)}") # 再度ログ出力と例外情報
-            screenshot_paths = []
-            if self._login_button_screenshot_path and os.path.exists(self._login_button_screenshot_path):
-                 screenshot_paths.append(self._login_button_screenshot_path)
-            if error_info.get('screenshot_path') and os.path.exists(error_info['screenshot_path']):
-                 screenshot_paths.append(error_info['screenshot_path'])
-            self._send_error_notification('unexpected_login_error', error_info, screenshot_paths, 'note_poster.log')
-            raise
-            
+            self._save_screenshot("error") # メソッド名を修正
+            self._send_error_notification("error")
+            self._send_error_notification("login_timeout")
+            return False
+
     def post_article(self, article_body: str, title: str) -> Optional[str]:
         """記事をNoteに投稿する"""
         try:
             logger.info(f"Starting article posting process for title: {title}")
             # ログイン処理
             self._setup_driver()
-            self._login()
-            self.cleanup() # ログイン後、ドライバーを一度終了してメモリ解放
+            logger.info("Driver setup complete in post_article") # デバッグログを追加
             
-            # 記事投稿処理のためにドライバーを再初期化
-            self._setup_driver()
+            # _login呼び出し直前のdriverの状態を確認
+            logger.info(f"Driver instance before login: {self.driver}") # 追加
+            logger.info(f"Driver type before login: {type(self.driver)}") # 追加
+            logger.info(f"Is driver None before login?: {self.driver is None}") # 追加
             
-            # 新規記事作成ページへ移動
+            try:
+                self._login()
+                logger.info("Login method called successfully.") # 追加
+            except Exception as e:
+                logger.error(f"Error calling _login method: {str(e)}") # 追加
+                raise # post_articleの外に例外を再送出
+
+            # 記事作成画面への遷移
+            self.logger.info("Navigating to new article page.")
             self.driver.get("https://note.com/notes/new")
-            self._wait_for_page_load()
-            
-            # タイトルと本文の入力
-            title_input = self.wait.until(EC.presence_of_element_located((By.XPATH, '//textarea[@placeholder="記事タイトル"]')))
-            title_input.clear()
-            title_input.send_keys(title)
-            time.sleep(1)
-            
-            body_input = self.wait.until(EC.presence_of_element_located((By.XPATH, '//div[@contenteditable="true" and contains(@class, "ProseMirror")]')))
-            body_input.click()
-            body_input.send_keys(article_body)
-            time.sleep(1)
-            
-            # 公開処理
-            publish_button = self.wait.until(EC.element_to_be_clickable((By.XPATH, '//span[contains(text(), "公開に進む")]')))
-            publish_button.click()
-            
-            post_button = self.wait.until(EC.element_to_be_clickable((By.XPATH, '//span[contains(text(), "投稿する")]')))
-            post_button.click()
-            
+            self._wait_for_page_load(timeout=60)  # ページ読み込み完了を待機
+
+            # 記事投稿ページの主要要素が出現するのを待機
+            try:
+                # タイトル入力欄の待機
+                title_input = WebDriverWait(self.driver, 60).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, 'textarea[placeholder="記事タイトル"]'))
+                )
+                self.logger.info("Title input field found")
+
+                # 本文入力欄の待機
+                body_input = WebDriverWait(self.driver, 60).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, 'div[contenteditable="true"]'))
+                )
+                self.logger.info("Body input field found")
+
+                # 要素が見つかったことを確認
+                if not title_input or not body_input:
+                    raise NoSuchElementException("Required elements not found")
+
+                # 記事のタイトルと本文を入力
+                title_input.clear()
+                title_input.send_keys(title)
+                time.sleep(1)
+
+                body_input.click()
+                body_input.send_keys(article_body)
+                time.sleep(1)
+
+                # 公開処理
+                publish_button = WebDriverWait(self.driver, 60).until(
+                    EC.element_to_be_clickable((By.XPATH, '//button[contains(., "公開に進む")]'))
+                )
+                publish_button.click()
+                self.logger.info("Publish button clicked")
+
+                # 「投稿する」ボタンのクリック
+                post_button = WebDriverWait(self.driver, 60).until(
+                    EC.element_to_be_clickable((By.XPATH, '//button[contains(., "投稿する")]')) # XPathで「投稿する」ボタンを特定
+                )
+                post_button.click()
+                self.logger.info("Post button clicked")
+
+            except TimeoutException as e:
+                self.logger.error(f"Timeout waiting for elements: {str(e)}")
+                self._save_screenshot("timeout")
+                raise
+            except NoSuchElementException as e:
+                self.logger.error(f"Required elements not found: {str(e)}")
+                self._save_screenshot("missing_elements")
+                raise
+            except Exception as e:
+                self.logger.error(f"Unexpected error: {str(e)}")
+                self._save_screenshot("unexpected_error")
+                raise
+
             # 投稿完了の待機
             time.sleep(5) # 待機時間を延長
             current_url = self.driver.current_url
