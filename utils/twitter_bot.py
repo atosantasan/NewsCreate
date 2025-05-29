@@ -360,6 +360,45 @@ class TwitterBot:
             time.sleep(2) # 入力後の短い静的待機
             password_input.send_keys(Keys.RETURN)
             
+            # ログインボタンがクリック可能になるまで待機
+            logger.info("Waiting for login button to be clickable...")
+            
+            # ログインボタンクリック前のURLをログ出力
+            logger.info(f"URL before clicking login button: {self.driver.current_url}")
+
+            try:
+                # データテストIDを使用してログインボタンを特定
+                login_button = self.wait.until(
+                    EC.element_to_be_clickable((By.XPATH, '//div[@data-testid="loginButton"]'))
+                )
+                logger.info("Login button found and is clickable.")
+
+                # 標準のclick()を試す
+                login_button.click()
+                logger.info("Standard click on login button successful.")
+                
+            except Exception as e_click:
+                logger.warning(f"Standard click failed: {str(e_click)}. Attempting JavaScript click.")
+                try:
+                    # JavaScriptでクリックを試みる
+                    self.driver.execute_script("arguments[0].click();", login_button)
+                    logger.info("JavaScript click on login button successful.")
+                except Exception as e_js_click:
+                    logger.error(f"JavaScript click also failed: {str(e_js_click)}")
+                    # クリック失敗時のスクリーンショットとエラー通知
+                    screenshot_path = self._save_screenshot("login_button_click_failed")
+                    error_info = {
+                        'url': self.driver.current_url if self.driver else "N/A",
+                        'error': f"Failed to click login button: {str(e_click) if 'e_click' in locals() else 'Unknown error'} / JS error: {str(e_js_click)}",
+                        'screenshot_path': screenshot_path
+                    }
+                    self._send_error_notification("Login Button Click Failed", error_info, [screenshot_path] if screenshot_path else [], "twitter_bot.log")
+                    raise Exception("Failed to click login button") from e_js_click # クリック失敗を通知してリトライさせる
+
+            # ログインボタンクリック後のURLをログ出力
+            # Note: URLが即座に変わるとは限らないため、これは参考情報
+            logger.info(f"URL after clicking login button (immediately): {self.driver.current_url}")
+            
             # ログイン完了の待機
             logger.info("Waiting for login completion...")
             try:
