@@ -46,8 +46,8 @@ class TwitterBot:
         # WebDriverManagerに任せるか、Render環境のデフォルトパスに期待します。
         # options.binary_location = '/usr/bin/google-chrome' # この行を削除
 
-        service = Service(ChromeDriverManager().install()) # WebDriverManagerを使用
-        self.driver = webdriver.Chrome(service=service, options=options)
+        # service = Service(ChromeDriverManager().install()) # WebDriverManagerを使用 # この行を削除
+        self.driver = webdriver.Chrome(options=options) # 修正: service引数を削除
         self.wait = WebDriverWait(self.driver, 40)
         self.modal_wait = WebDriverWait(self.driver, 5)
         logger.info("Chrome driver initialized for Twitter bot.") # ログ変更
