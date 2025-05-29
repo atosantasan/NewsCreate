@@ -44,10 +44,10 @@ class TwitterBot:
     def _handle_security_modal(self):
         """セキュリティモーダルの処理"""
         try:
-            close_button = self.modal_wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'div[aria-label="Close"]')))
+            close_button = self.modal_wait.until(EC.element_to_be_clickable((By.XPATH, '//div[@aria-label="Close"]')))
             close_button.click()
             logger.info("Security modal closed")
-            self.wait.until(EC.invisibility_of_element_located((By.CSS_SELECTOR, 'div[aria-label="Close"]')))
+            self.wait.until(EC.invisibility_of_element_located((By.XPATH, '//div[@aria-label="Close"]')))
         except TimeoutException:
             logger.info("No security modal detected")
             
@@ -59,13 +59,13 @@ class TwitterBot:
             self.driver.get('https://twitter.com/i/flow/login')
             
             # ユーザー名/メールアドレス入力
-            initial_input = self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'input[autocomplete="username"], input[name="text"]')))
+            initial_input = self.wait.until(EC.presence_of_element_located((By.XPATH, '//input[@autocomplete="username"] | //input[@name="text"]')))
             initial_input.send_keys(self.twitter_id)
             initial_input.send_keys(Keys.RETURN)
             
             # ユーザーID確認（必要な場合）
             try:
-                user_id_input = self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'input[name="text"][data-testid="ocfEnterTextTextInput"]')))
+                user_id_input = self.wait.until(EC.presence_of_element_located((By.XPATH, '//input[@name="text" and @data-testid="ocfEnterTextTextInput"]')))
                 user_id_input.send_keys(self.twitter_user_id)
                 user_id_input.send_keys(Keys.RETURN)
                 logger.info("User ID verification completed")
@@ -73,12 +73,12 @@ class TwitterBot:
                 logger.info("No user ID verification required")
                 
             # パスワード入力
-            password_input = self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'input[type="password"], input[name="password"]')))
+            password_input = self.wait.until(EC.presence_of_element_located((By.XPATH, '//input[@type="password"] | //input[@name="password"]')))
             password_input.send_keys(self.twitter_password)
             password_input.send_keys(Keys.RETURN)
             
             # ログイン完了の待機
-            self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'div[data-testid="tweetTextarea_0"], div[aria-label="What\'s happening?"]')))
+            self.wait.until(EC.presence_of_element_located((By.XPATH, '//div[@data-testid="tweetTextarea_0"] | //div[@aria-label="What\'s happening?"]')))
             logger.info("Successfully logged in to Twitter")
             
         except Exception as e:
@@ -105,16 +105,16 @@ class TwitterBot:
             self._login()
             
             # ツイート作成画面を開く
-            post_button = self.wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'a[aria-label="Post"]')))
+            post_button = self.wait.until(EC.element_to_be_clickable((By.XPATH, '//a[@aria-label="Post"]')))
             post_button.click()
             
             # ツイート内容の入力
-            tweet_box = self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'div[data-testid="tweetTextarea_0"]')))
+            tweet_box = self.wait.until(EC.presence_of_element_located((By.XPATH, '//div[@data-testid="tweetTextarea_0"]')))
             tweet_content = f"{title}\n{url}"
             tweet_box.send_keys(tweet_content)
             
             # 投稿ボタンのクリック
-            tweet_button = self.wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[data-testid="tweetButton"], div[data-testid="tweetButtonInline"]')))
+            tweet_button = self.wait.until(EC.element_to_be_clickable((By.XPATH, '//button[@data-testid="tweetButton"] | //div[@data-testid="tweetButtonInline"]')))
             tweet_button.click()
             
             # 投稿完了の待機
