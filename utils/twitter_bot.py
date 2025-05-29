@@ -405,6 +405,11 @@ class TwitterBot:
             time.sleep(3) # 入力後の短い静的待機を延長
             password_input.send_keys(Keys.RETURN)
             
+            # パスワード入力後の画面遷移や処理を待機
+            logger.info("Waiting after password input and return...")
+            time.sleep(5) # パスワード入力後の静的待機を追加
+            logger.info("Finished static wait after password input.")
+            
             # ログインボタンがクリック可能になるまで待機
             logger.info("Waiting for login button to be clickable...")
             
@@ -412,7 +417,15 @@ class TwitterBot:
             logger.info(f"URL before clicking login button: {self.driver.current_url}")
 
             try:
-                # データテストIDを使用してログインボタンを特定
+                # データテストIDを使用してログインボタンを特定 (存在を確認)
+                logger.info("Checking for login button presence...")
+                WebDriverWait(self.driver, 30).until(
+                     EC.presence_of_element_located((By.XPATH, '//div[@data-testid="loginButton"]'))
+                )
+                logger.info("Login button element is present in DOM.")
+                
+                # 要素がクリック可能になるまで待機
+                logger.info("Waiting for login button to be clickable...")
                 login_button = self.wait.until(
                     EC.element_to_be_clickable((By.XPATH, '//div[@data-testid="loginButton"]'))
                 )
@@ -425,7 +438,10 @@ class TwitterBot:
             except Exception as e_click:
                 logger.warning(f"Standard click failed: {str(e_click)}. Attempting JavaScript click.")
                 try:
-                    # JavaScriptでクリックを試みる
+                    # JavaScriptでクリックを試みる (要素を再度特定する必要があるかもしれないが、ここでは前の要素を再利用)
+                    # もしJSクリックでもエラー 'cannot access local variable 'login_button'' が出る場合は、
+                    # ここで再度login_button要素を特定する処理が必要。
+                    # 例: login_button = self.wait.until(EC.presence_of_element_located((By.XPATH, '//div[@data-testid="loginButton"]')))
                     self.driver.execute_script("arguments[0].click();", login_button)
                     logger.info("JavaScript click on login button successful.")
                 except Exception as e_js_click:
