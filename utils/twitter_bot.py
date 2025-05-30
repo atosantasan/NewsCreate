@@ -397,10 +397,14 @@ class TwitterBot:
             # 要素が画面に表示され、クリック可能（書き込み可能）になるまで待機
             # セレクタはdata-testid="tweetComposer"//input[@name="password"]なども考えられるが、汎用性を考慮し現状維持
             password_input = self.wait.until(
-                EC.element_to_be_clickable((By.XPATH, '//input[@name="password"]')) 
+                EC.element_to_be_clickable((By.XPATH, '//input[@name="password"]'))
             )
             logger.info("Password input field found and is clickable.")
-            
+
+            # パスワードフィールドをクリックしてフォーカスを当てる
+            password_input.click()
+            logger.info("Password input field clicked.")
+
             password_input.clear()
             for char in self.twitter_password:
                 password_input.send_keys(char)
