@@ -429,6 +429,32 @@ class TwitterBot:
             time.sleep(1)  # 静的待機を1秒に短縮
             logger.info("Finished short static wait after user ID submission.")
 
+            # エラーモーダルが表示されていないかチェックし、表示されていれば閉じる
+            try:
+                logger.info("Checking for error modal...")
+                # エラーモーダル内のOKボタンまたは閉じるボタンを短いタイムアウトで待機
+                error_ok_button = WebDriverWait(self.driver, 5).until(
+                    EC.element_to_be_clickable((By.XPATH, '//button[.//span[text()="OK"]] | //div[@aria-label="Close"]'))
+                )
+                logger.warning("Error modal detected. Attempting to close.")
+                error_ok_button.click()
+                # モーダルが閉じるまで待機
+                WebDriverWait(self.driver, 5).until(
+                    EC.invisibility_of_element_located((By.XPATH, '//button[.//span[text()="OK"]] | //div[@aria-label="Close"]'))
+                )
+                logger.info("Error modal closed successfully.")
+                # モーダルを閉じた後に少し待機
+                time.sleep(2)
+
+            except TimeoutException:
+                logger.info("No error modal detected or could not close within timeout.")
+            except Exception as e:
+                logger.error(f"An error occurred while handling error modal: {str(e)}")
+                # エラーモーダルの処理中にエラーが発生した場合もスクリーンショットと通知
+                screenshot_path = self._save_screenshot("error_modal_handling_error")
+                error_info = {'url': self.driver.current_url if self.driver else "N/A", 'error': f"Error handling modal: {str(e)}", 'screenshot_path': screenshot_path}
+                self._send_error_notification("Error Modal Handling Failed", error_info, self._collect_screenshots(screenshot_path), "twitter_bot.log")
+
             screenshot_before_password_wait = self._save_screenshot("before_password_wait")
             logger.info(f"Screenshot saved before password input field wait: {screenshot_before_password_wait}")
             self._send_debug_screenshot_email("Before Password Wait", self._collect_screenshots(screenshot_initial_load, screenshot_after_page_load, screenshot_after_username_input, screenshot_after_userid_input if 'screenshot_after_userid_input' in locals() else (screenshot_after_userid_check_skipped if 'screenshot_after_userid_check_skipped' in locals() else None), screenshot_before_password_wait))
@@ -436,10 +462,10 @@ class TwitterBot:
             try:
                 # パスワード入力フィールドがクリック可能になるか、または特定の時間待機
                 # Renderのワーカータイムアウトに注意しつつ、少し長めに設定
-                password_input = WebDriverWait(self.driver, 90).until( # ここも90秒に
-                    EC.element_to_be_clickable((By.XPATH, '//input[@name="password"]'))
+                password_input = WebDriverWait(self.driver, 90).until(
+                    EC.element_to_be_clickable((By.XPATH, '//input[@name="password"]')) # ここは元のXPathに戻しました
                 )
-                logger.info("Password input field found and is clickable.")
+                logger.info("Password input field found and is clickable.") # ログメッセージは修正が必要です
 
                 screenshot_before_password = self._save_screenshot("before_password_input")
                 logger.info(f"Screenshot saved before password input: {screenshot_before_password}")
