@@ -23,6 +23,8 @@ from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
 from email import encoders
+import random
+from selenium_stealth import stealth
 
 # ログ設定を追加
 logging.basicConfig(
@@ -266,7 +268,20 @@ class TwitterBot:
             options.add_argument("--high-dpi-support=1")
             
             self.driver = webdriver.Chrome(options=options)
-            self.wait = WebDriverWait(self.driver, 90) # 待機時間を90秒に設定
+            self.wait = WebDriverWait(self.driver, 180) # 待機時間を180秒に設定
+
+            # Selenium-Stealthを適用
+            stealth(self.driver,
+                    languages=["en-US", "en"],
+                    vendor="Google Inc.",
+                    platform="Win32",
+                    webgl_vendor="Intel Inc.",
+                    renderer="Intel Iris OpenGL Engine",
+                    fix_hairline=False,
+                    run_on_insecure_origins=False,
+                    )
+            logger.info("Selenium-Stealth applied.")
+
             self.modal_wait = WebDriverWait(self.driver, 5)
             logger.info("Chrome driver initialized for Twitter bot.")
             
@@ -405,13 +420,15 @@ class TwitterBot:
             password_input.click()
             logger.info("Password input field clicked.")
 
-            # JavaScriptを使ってパスワードを入力
-            logger.info("Entering password using JavaScript...")
-            self.driver.execute_script("arguments[0].value = arguments[1];", password_input, self.twitter_password)
-            logger.info("Password entered via JavaScript.")
-            time.sleep(2) # 入力後の短い静的待機
+            # send_keysを使ってパスワードを入力（人間らしい速度をシミュレート）
+            logger.info("Entering password using send_keys with random delays...")
+            password_input.clear() # 入力前にフィールドをクリア
 
-            # パスワード入力後のログインボタンクリックや待機処理などはそのまま残す
+            for char in self.twitter_password:
+                password_input.send_keys(char)
+                # 0.1秒から0.5秒のランダムな遅延
+                time.sleep(random.uniform(0.1, 0.5))
+
             time.sleep(5) # パスワード入力後の静的待機
             password_input.send_keys(Keys.RETURN)
 
