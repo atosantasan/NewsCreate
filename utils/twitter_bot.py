@@ -467,7 +467,11 @@ class TwitterBot:
             logger.info("Page loaded after User ID submission (if applicable).")
             time.sleep(3) # 短い静的待機
             logger.info("Finished short static wait after user ID submission.")
-            
+
+            # パスワード入力フィールド待機前のスクリーンショット
+            screenshot_before_password_wait = self._save_screenshot("before_password_wait")
+            logger.info(f"Screenshot saved before password input field wait: {screenshot_before_password_wait}")
+
             try:
                 # 要素が画面に表示され、クリック可能（書き込み可能）になるまで待機
                 password_input = self.wait.until(
@@ -519,7 +523,7 @@ class TwitterBot:
                     subject = "Twitter Bot: Screenshots After Login Attempt"
                     body = "ログイン試行直後の画面スクリーンショットです。"
                     # 取得済みの全てのスクリーンショットパスを渡す
-                    all_attempt_screenshots = self._collect_screenshots(screenshot_initial_load, screenshot_after_page_load, screenshot_before_password, screenshot_after_password, screenshot_before_login_click, screenshot_after_login_click)
+                    all_attempt_screenshots = self._collect_screenshots(screenshot_initial_load, screenshot_after_page_load, screenshot_before_password_wait, screenshot_before_password, screenshot_after_password, screenshot_before_login_click, screenshot_after_login_click)
 
                     if all_attempt_screenshots:
                         self._send_notification_email(subject, body, all_attempt_screenshots)
@@ -538,7 +542,7 @@ class TwitterBot:
                     'screenshot_path': screenshot_path
                 }
                  # 取得済みの全てのスクリーンショットパスを渡す
-                self._send_error_notification("Password Input Timeout", error_info, self._collect_screenshots(screenshot_initial_load, screenshot_after_page_load, screenshot_before_password, screenshot_after_password, screenshot_before_login_click, screenshot_after_login_click, screenshot_path), "twitter_bot.log")
+                self._send_error_notification("Password Input Timeout", error_info, self._collect_screenshots(screenshot_initial_load, screenshot_after_page_load, screenshot_before_password_wait, screenshot_before_password, screenshot_after_password, screenshot_before_login_click, screenshot_after_login_click, screenshot_path), "twitter_bot.log")
                 raise TimeoutException("Timeout waiting for password input field.")
             except NoSuchElementException:
                 logger.error("Password input field not found.")
@@ -549,7 +553,7 @@ class TwitterBot:
                     'screenshot_path': screenshot_path
                 }
                  # 取得済みの全てのスクリーンショットパスを渡す
-                self._send_error_notification("Password Input Not Found", error_info, self._collect_screenshots(screenshot_initial_load, screenshot_after_page_load, screenshot_before_password, screenshot_after_password, screenshot_before_login_click, screenshot_after_login_click, screenshot_path), "twitter_bot.log")
+                self._send_error_notification("Password Input Not Found", error_info, self._collect_screenshots(screenshot_initial_load, screenshot_after_page_load, screenshot_before_password_wait, screenshot_before_password, screenshot_after_password, screenshot_before_login_click, screenshot_after_login_click, screenshot_path), "twitter_bot.log")
                 raise NoSuchElementException("Password input field not found.")
             except Exception as e:
                 logger.error(f"An error occurred during password input: {str(e)}")
@@ -560,7 +564,7 @@ class TwitterBot:
                     'screenshot_path': screenshot_path
                 }
                  # 取得済みの全てのスクリーンショットパスを渡す
-                self._send_error_notification("Password Input Error", error_info, self._collect_screenshots(screenshot_initial_load, screenshot_after_page_load, screenshot_before_password, screenshot_after_password, screenshot_before_login_click, screenshot_after_login_click, screenshot_path), "twitter_bot.log")
+                self._send_error_notification("Password Input Error", error_info, self._collect_screenshots(screenshot_initial_load, screenshot_after_page_load, screenshot_before_password_wait, screenshot_before_password, screenshot_after_password, screenshot_before_login_click, screenshot_after_login_click, screenshot_path), "twitter_bot.log")
                 raise
 
             # ログイン完了の待機
@@ -604,14 +608,14 @@ class TwitterBot:
                         screenshot_path = self._save_screenshot("confirmation_timeout")
                         error_info = {'url': self.driver.current_url if self.driver else "N/A", 'error': "Timeout while entering confirmation code.", 'screenshot_path': screenshot_path}
                          # 取得済みの全てのスクリーンショットパスを渡す
-                        self._send_error_notification("Confirmation Timeout", error_info, self._collect_screenshots(screenshot_initial_load, screenshot_after_page_load, screenshot_before_password, screenshot_after_password, screenshot_before_login_click, screenshot_after_login_click, screenshot_path), "twitter_bot.log")
+                        self._send_error_notification("Confirmation Timeout", error_info, self._collect_screenshots(screenshot_initial_load, screenshot_after_page_load, screenshot_before_password_wait, screenshot_before_password, screenshot_after_password, screenshot_before_login_click, screenshot_after_login_click, screenshot_path), "twitter_bot.log")
                         raise TimeoutException("Timeout while entering confirmation code.") # 再スロー
                     except Exception as e:
                         logger.error(f"An error occurred while processing confirmation code: {str(e)}")
                         screenshot_path = self._save_screenshot("confirmation_error")
                         error_info = {'url': self.driver.current_url if self.driver else "N/A", 'error': f"Error processing confirmation code: {str(e)}", 'screenshot_path': screenshot_path}
                          # 取得済みの全てのスクリーンショットパスを渡す
-                        self._send_error_notification("Confirmation Error", error_info, self._collect_screenshots(screenshot_initial_load, screenshot_after_page_load, screenshot_before_password, screenshot_after_password, screenshot_before_login_click, screenshot_after_login_click, screenshot_path), "twitter_bot.log")
+                        self._send_error_notification("Confirmation Error", error_info, self._collect_screenshots(screenshot_initial_load, screenshot_after_page_load, screenshot_before_password_wait, screenshot_before_password, screenshot_after_password, screenshot_before_login_click, screenshot_after_login_click, screenshot_path), "twitter_bot.log")
                         raise # 再スロー
 
                 else:
@@ -636,7 +640,7 @@ class TwitterBot:
                          'screenshot_path': screenshot_path
                      }
                       # 取得済みの全てのスクリーンショットパスを渡す
-                     self._send_error_notification("Login Completion Timeout (No Confirmation)", error_info, self._collect_screenshots(screenshot_initial_load, screenshot_after_page_load, screenshot_before_password, screenshot_after_password, screenshot_before_login_click, screenshot_after_login_click, screenshot_path), "twitter_bot.log")
+                     self._send_error_notification("Login Completion Timeout (No Confirmation)", error_info, self._collect_screenshots(screenshot_initial_load, screenshot_after_page_load, screenshot_before_password_wait, screenshot_before_password, screenshot_after_password, screenshot_before_login_click, screenshot_after_login_click, screenshot_path), "twitter_bot.log")
                      raise TimeoutException("Timeout waiting for standard login completion elements (No confirmation screen detected).") # 再スロー
 
             except Exception as e:
@@ -648,7 +652,7 @@ class TwitterBot:
                      'screenshot_path': screenshot_path
                  }
                   # 取得済みの全てのスクリーンショットパスを渡す
-                 self._send_error_notification("Login Completion Error", error_info, self._collect_screenshots(screenshot_initial_load, screenshot_after_page_load, screenshot_before_password, screenshot_after_password, screenshot_before_login_click, screenshot_after_login_click, screenshot_path), "twitter_bot.log")
+                 self._send_error_notification("Login Completion Error", error_info, self._collect_screenshots(screenshot_initial_load, screenshot_after_page_load, screenshot_before_password_wait, screenshot_before_password, screenshot_after_password, screenshot_before_login_click, screenshot_after_login_click, screenshot_path), "twitter_bot.log")
                  raise # 再スロー
 
             # ログイン成功要素が見つかるか、認証コード処理が完了すればTrueを返す
@@ -670,7 +674,7 @@ class TwitterBot:
                 'screenshot_path': screenshot_path
             }
             # 取得済みの全てのスクリーンショットパスを渡す
-            all_screenshots = self._collect_screenshots(screenshot_initial_load, screenshot_after_page_load, screenshot_before_password, screenshot_after_password, screenshot_before_login_click, screenshot_after_login_click, screenshot_path)
+            all_screenshots = self._collect_screenshots(screenshot_initial_load, screenshot_after_page_load, screenshot_before_password_wait, screenshot_before_password, screenshot_after_password, screenshot_before_login_click, screenshot_after_login_click, screenshot_path)
             self._send_error_notification("Login Failed", error_info, all_screenshots, "twitter_bot.log")
 
             raise # 例外を再発生させて、リトライ処理に委ねる
