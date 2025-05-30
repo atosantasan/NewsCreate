@@ -477,8 +477,19 @@ class TwitterBot:
             except TimeoutException:
                 logger.error("Timeout waiting for password input field.")
                 screenshot_path = self._save_screenshot("password_input_timeout")
+                # エラー時のURLとページソースもログに出力
+                current_url = self.driver.current_url if self.driver else "N/A"
+                page_source = ""
+                try:
+                    page_source = self.driver.page_source
+                except Exception as source_e:
+                    logger.error(f"Failed to get page source: {str(source_e)}")
+                    
+                logger.error(f"Current URL: {current_url}")
+                logger.error(f"Page Source:\n{page_source[:1000]}...") # ソースが長い可能性があるので最初の1000文字程度に制限
+
                 error_info = {
-                    'url': self.driver.current_url if self.driver else "N/A",
+                    'url': current_url,
                     'error': "Timeout waiting for password input field.",
                     'screenshot_path': screenshot_path
                 }
