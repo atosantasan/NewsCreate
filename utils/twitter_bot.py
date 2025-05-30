@@ -425,6 +425,10 @@ class TwitterBot:
             )
             logger.info("Password input field found and is clickable.")
 
+            # パスワード入力前のスクリーンショットを保存
+            screenshot_before_password = self._save_screenshot("before_password_input")
+            logger.info(f"Screenshot saved before password input: {screenshot_before_password}")
+
             # パスワードフィールドをクリックしてフォーカスを当てる
             password_input.click()
             logger.info("Password input field clicked.")
@@ -436,6 +440,11 @@ class TwitterBot:
             actions.perform()
             logger.info("Password entered via ActionChains.")
 
+            # パスワード入力後のスクリーンショットを保存
+            screenshot_after_password = self._save_screenshot("after_password_input")
+            logger.info(f"Screenshot saved after password input: {screenshot_after_password}")
+
+            # パスワード入力後の静的待機
             time.sleep(5) # パスワード入力後の静的待機
             password_input.send_keys(Keys.RETURN)
 
@@ -503,7 +512,14 @@ class TwitterBot:
                 'error': str(e),
                 'screenshot_path': screenshot_path
             }
-            self._send_error_notification("Login Failed", error_info, [screenshot_path] if screenshot_path else [], "twitter_bot.log")
+            # パスワード入力前後のスクリーンショットを追加
+            additional_screenshots = []
+            if 'screenshot_before_password' in locals() and screenshot_before_password:
+                additional_screenshots.append(screenshot_before_password)
+            if 'screenshot_after_password' in locals() and screenshot_after_password:
+                additional_screenshots.append(screenshot_after_password)
+
+            self._send_error_notification("Login Failed", error_info, [screenshot_path] if screenshot_path else [] + additional_screenshots, "twitter_bot.log")
 
             raise # 例外を再発生させて、リトライ処理に委ねる
 
