@@ -306,9 +306,12 @@ class TwitterBot:
         """Twitterにログイン"""
         try:
             logger.info("Attempting to login to Twitter")
-            # _setup_driverはpost_tweetではなく_login内で呼び出す
-            # self._setup_driver()
+            self.driver.get('https://twitter.com/i/flow/login')
+            self.driver.set_page_load_timeout(120)  # ページ読み込みタイムアウトを120秒に延長
             
+            # ページの読み込み完了を待機
+            self._wait_for_page_load(timeout=120)  # ページ読み込み待機も120秒に延長
+
             self.driver.get('https://twitter.com/i/flow/login')
             self.driver.set_page_load_timeout(90) # ページ読み込みタイムアウトも90秒に延長
             
