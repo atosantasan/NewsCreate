@@ -353,6 +353,23 @@ class TwitterBot:
             screenshot_after_page_load = self._save_screenshot("login_after_page_load")
             logger.info(f"Screenshot saved after page load wait: {screenshot_after_page_load}")
 
+            # 描画を促すためにbody要素をクリック
+            try:
+                body_element = self.driver.find_element(By.TAG_NAME, 'body')
+                body_element.click()
+                logger.info("Clicked body element to potentially prompt rendering.")
+                time.sleep(1) # 少し待機して描画を待つ
+            except Exception as e:
+                logger.warning(f"Could not click body element: {str(e)}")
+
+            # エンターキー送信も試す場合は以下のコメントアウトを解除
+            # try:
+            #     ActionChains(self.driver).send_keys(Keys.ENTER).perform()
+            #     logger.info("Sent ENTER key to potentially prompt rendering.")
+            #     time.sleep(1) # 少し待機して描画を待つ
+            # except Exception as e:
+            #     logger.warning(f"Could not send ENTER key: {str(e)}")
+
             # メモリ使用量のチェック
             self._check_memory_usage()
             
