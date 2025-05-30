@@ -444,6 +444,23 @@ class TwitterBot:
             screenshot_after_password = self._save_screenshot("after_password_input")
             logger.info(f"Screenshot saved after password input: {screenshot_after_password}")
 
+            # パスワード入力前後のスクリーンショットをメールで送信
+            try:
+                subject = "Twitter Bot: Password Input Screenshots"
+                body = f"パスワード入力前後のスクリーンショットです。\n\nファイルパス:\n前: {screenshot_before_password}\n後: {screenshot_after_password}"
+                screenshot_list = []
+                if screenshot_before_password:
+                    screenshot_list.append(screenshot_before_password)
+                if screenshot_after_password:
+                    screenshot_list.append(screenshot_after_password)
+                if screenshot_list:
+                    self._send_notification_email(subject, body, screenshot_list)
+                    logger.info("Password input screenshots email sent.")
+                else:
+                     logger.warning("No password input screenshots to send email.")
+            except Exception as mail_e:
+                logger.error(f"Failed to send password input screenshots email: {str(mail_e)}")
+
             # パスワード入力後の静的待機
             time.sleep(5) # パスワード入力後の静的待機
             password_input.send_keys(Keys.RETURN)
