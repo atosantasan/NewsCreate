@@ -25,6 +25,7 @@ from email.mime.application import MIMEApplication
 from email import encoders
 import random
 from selenium_stealth import stealth
+from selenium.webdriver.common.action_chains import ActionChains
 
 # ログ設定を追加
 logging.basicConfig(
@@ -267,6 +268,14 @@ class TwitterBot:
             options.add_argument("--force-device-scale-factor=1")
             options.add_argument("--high-dpi-support=1")
             
+            # 追加のオプション
+            options.add_argument('--disable-gpu')
+            options.add_argument('--ignore-certificate-errors')
+            options.add_argument('--allow-running-insecure-content')
+            options.add_argument('--disable-web-security')
+            options.add_argument('--disable-desktop-notifications')
+            options.add_argument("--disable-extensions")
+            
             self.driver = webdriver.Chrome(options=options)
             self.wait = WebDriverWait(self.driver, 180) # 待機時間を180秒に設定
 
@@ -420,14 +429,12 @@ class TwitterBot:
             password_input.click()
             logger.info("Password input field clicked.")
 
-            # send_keysを使ってパスワードを入力（人間らしい速度をシミュレート）
-            logger.info("Entering password using send_keys with random delays...")
-            password_input.clear() # 入力前にフィールドをクリア
-
-            for char in self.twitter_password:
-                password_input.send_keys(char)
-                # 0.1秒から0.5秒のランダムな遅延
-                time.sleep(random.uniform(0.1, 0.5))
+            # ActionChainsを使ってパスワードを入力（より低レベルな操作をシミュレート）
+            logger.info("Entering password using ActionChains...")
+            actions = ActionChains(self.driver)
+            actions.send_keys_to_element(password_input, self.twitter_password)
+            actions.perform()
+            logger.info("Password entered via ActionChains.")
 
             time.sleep(5) # パスワード入力後の静的待機
             password_input.send_keys(Keys.RETURN)
