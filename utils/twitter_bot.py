@@ -444,17 +444,17 @@ class TwitterBot:
             screenshot_after_password = self._save_screenshot("after_password_input")
             logger.info(f"Screenshot saved after password input: {screenshot_after_password}")
 
-            # パスワード入力前後のスクリーンショットをメールで送信
+            # パスワード入力前後のスクリーンショットをメールで送信（この時点でのスクリーンショットを送信）
             try:
-                subject = "Twitter Bot: Password Input Screenshots"
+                subject = "Twitter Bot: Password Input Screenshots (Before Login Click)"
                 body = f"パスワード入力前後のスクリーンショットです。\n\nファイルパス:\n前: {screenshot_before_password}\n後: {screenshot_after_password}"
-                screenshot_list = []
-                if screenshot_before_password:
-                    screenshot_list.append(screenshot_before_password)
-                if screenshot_after_password:
-                    screenshot_list.append(screenshot_after_password)
-                if screenshot_list:
-                    self._send_notification_email(subject, body, screenshot_list)
+                screenshot_list_input = []
+                if 'screenshot_before_password' in locals() and screenshot_before_password:
+                    screenshot_list_input.append(screenshot_before_password)
+                if 'screenshot_after_password' in locals() and screenshot_after_password:
+                    screenshot_list_input.append(screenshot_after_password)
+                if screenshot_list_input:
+                    self._send_notification_email(subject, body, screenshot_list_input)
                     logger.info("Password input screenshots email sent.")
                 else:
                      logger.warning("No password input screenshots to send email.")
@@ -463,7 +463,16 @@ class TwitterBot:
 
             # パスワード入力後の静的待機
             time.sleep(5) # パスワード入力後の静的待機
-            password_input.send_keys(Keys.RETURN)
+
+            # ログインボタンクリック前のスクリーンショットを保存
+            screenshot_before_login_click = self._save_screenshot("before_login_click")
+            logger.info(f"Screenshot saved before login click: {screenshot_before_login_click}")
+
+            password_input.send_keys(Keys.RETURN) # ここでログインを実行
+
+            # ログインボタンクリック後のスクリーンショットを保存
+            screenshot_after_login_click = self._save_screenshot("after_login_click")
+            logger.info(f"Screenshot saved after login click: {screenshot_after_login_click}")
 
             # ログイン完了の待機
             logger.info("Waiting for login completion...")
@@ -553,7 +562,16 @@ URL: {error_info.get('url', 'N/A')}
 エラー詳細: {error_info.get('error', 'N/A')}
 メモリ使用量: {psutil.Process(os.getpid()).memory_percent():.1f}%
 """
-        self._send_notification_email(subject, body, screenshot_paths, log_file_path)
+        # ログインボタン前後のスクリーンショットをエラーメールに含める
+        login_click_screenshots = []
+        if 'screenshot_before_login_click' in locals() and screenshot_before_login_click:
+             login_click_screenshots.append(screenshot_before_login_click)
+        if 'screenshot_after_login_click' in locals() and screenshot_after_login_click:
+             login_click_screenshots.append(screenshot_after_login_click)
+
+        all_screenshots = screenshot_paths + login_click_screenshots
+
+        self._send_notification_email(subject, body, all_screenshots, log_file_path)
 
     def post_tweet(self, title: str, url: str) -> bool:
         """ツイートを投稿する"""
