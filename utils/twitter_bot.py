@@ -444,23 +444,6 @@ class TwitterBot:
             screenshot_after_password = self._save_screenshot("after_password_input")
             logger.info(f"Screenshot saved after password input: {screenshot_after_password}")
 
-            # パスワード入力前後のスクリーンショットをメールで送信（この時点でのスクリーンショットを送信）
-            try:
-                subject = "Twitter Bot: Password Input Screenshots (Before Login Click)"
-                body = f"パスワード入力前後のスクリーンショットです。\n\nファイルパス:\n前: {screenshot_before_password}\n後: {screenshot_after_password}"
-                screenshot_list_input = []
-                if 'screenshot_before_password' in locals() and screenshot_before_password:
-                    screenshot_list_input.append(screenshot_before_password)
-                if 'screenshot_after_password' in locals() and screenshot_after_password:
-                    screenshot_list_input.append(screenshot_after_password)
-                if screenshot_list_input:
-                    self._send_notification_email(subject, body, screenshot_list_input)
-                    logger.info("Password input screenshots email sent.")
-                else:
-                     logger.warning("No password input screenshots to send email.")
-            except Exception as mail_e:
-                logger.error(f"Failed to send password input screenshots email: {str(mail_e)}")
-
             # パスワード入力後の静的待機
             time.sleep(5) # パスワード入力後の静的待機
 
@@ -470,9 +453,35 @@ class TwitterBot:
 
             password_input.send_keys(Keys.RETURN) # ここでログインを実行
 
+            # クリック後の画面遷移や要素の出現を待つ前の短い静的待機
+            time.sleep(3)
+            logger.info("Finished short static wait after login click.")
+
             # ログインボタンクリック後のスクリーンショットを保存
             screenshot_after_login_click = self._save_screenshot("after_login_click")
             logger.info(f"Screenshot saved after login click: {screenshot_after_login_click}")
+
+            # ログイン試行直後のスクリーンショットをメールで送信
+            try:
+                subject = "Twitter Bot: Screenshots After Login Attempt"
+                body = "ログイン試行直後の画面スクリーンショットです。パスワード入力前後のスクリーンショットも含まれます。"
+                all_attempt_screenshots = []
+                if 'screenshot_before_password' in locals() and screenshot_before_password:
+                    all_attempt_screenshots.append(screenshot_before_password)
+                if 'screenshot_after_password' in locals() and screenshot_after_password:
+                    all_attempt_screenshots.append(screenshot_after_password)
+                if 'screenshot_before_login_click' in locals() and screenshot_before_login_click:
+                    all_attempt_screenshots.append(screenshot_before_login_click)
+                if 'screenshot_after_login_click' in locals() and screenshot_after_login_click:
+                    all_attempt_screenshots.append(screenshot_after_login_click)
+
+                if all_attempt_screenshots:
+                    self._send_notification_email(subject, body, all_attempt_screenshots)
+                    logger.info("Screenshots after login attempt email sent.")
+                else:
+                     logger.warning("No screenshots to send after login attempt.")
+            except Exception as mail_e:
+                logger.error(f"Failed to send screenshots after login attempt email: {str(mail_e)}")
 
             # ログイン完了の待機
             logger.info("Waiting for login completion...")
@@ -562,14 +571,23 @@ URL: {error_info.get('url', 'N/A')}
 エラー詳細: {error_info.get('error', 'N/A')}
 メモリ使用量: {psutil.Process(os.getpid()).memory_percent():.1f}%
 """
-        # ログインボタン前後のスクリーンショットをエラーメールに含める
-        login_click_screenshots = []
-        if 'screenshot_before_login_click' in locals() and screenshot_before_login_click:
-             login_click_screenshots.append(screenshot_before_login_click)
-        if 'screenshot_after_login_click' in locals() and screenshot_after_login_click:
-             login_click_screenshots.append(screenshot_after_login_click)
+        # 全ての関連スクリーンショットを収集
+        all_screenshots = []
+        # 汎用エラー発生時のスクリーンショット（もしあれば）
+        if screenshot_paths:
+             all_screenshots.extend(screenshot_paths)
 
-        all_screenshots = screenshot_paths + login_click_screenshots
+        # パスワード入力前後のスクリーンショット
+        if 'screenshot_before_password' in locals() and screenshot_before_password:
+            all_screenshots.append(screenshot_before_password)
+        if 'screenshot_after_password' in locals() and screenshot_after_password:
+            all_screenshots.append(screenshot_after_password)
+
+        # ログインボタンクリック前後のスクリーンショット
+        if 'screenshot_before_login_click' in locals() and screenshot_before_login_click:
+             all_screenshots.append(screenshot_before_login_click)
+        if 'screenshot_after_login_click' in locals() and screenshot_after_login_click:
+             all_screenshots.append(screenshot_after_login_click)
 
         self._send_notification_email(subject, body, all_screenshots, log_file_path)
 
