@@ -434,7 +434,9 @@ class TwitterBot:
             self._send_debug_screenshot_email("Before Password Wait", self._collect_screenshots(screenshot_initial_load, screenshot_after_page_load, screenshot_after_username_input, screenshot_after_userid_input if 'screenshot_after_userid_input' in locals() else (screenshot_after_userid_check_skipped if 'screenshot_after_userid_check_skipped' in locals() else None), screenshot_before_password_wait))
 
             try:
-                password_input = self.wait.until(
+                # パスワード入力フィールドがクリック可能になるか、または特定の時間待機
+                # Renderのワーカータイムアウトに注意しつつ、少し長めに設定
+                password_input = WebDriverWait(self.driver, 90).until( # ここも90秒に
                     EC.element_to_be_clickable((By.XPATH, '//input[@name="password"]'))
                 )
                 logger.info("Password input field found and is clickable.")
