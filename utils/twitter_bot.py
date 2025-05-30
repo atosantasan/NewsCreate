@@ -307,10 +307,10 @@ class TwitterBot:
         try:
             logger.info("Attempting to login to Twitter")
             self.driver.get('https://twitter.com/i/flow/login')
-            self.driver.set_page_load_timeout(120)  # ページ読み込みタイムアウトを120秒に延長
+            self.driver.set_page_load_timeout(180)  # ページ読み込みタイムアウトを180秒に延長
             
             # ページの読み込み完了を待機
-            self._wait_for_page_load(timeout=120)  # ページ読み込み待機も120秒に延長
+            self._wait_for_page_load(timeout=180)  # ページ読み込み待機も180秒に延長
 
             self.driver.get('https://twitter.com/i/flow/login')
             self.driver.set_page_load_timeout(90) # ページ読み込みタイムアウトも90秒に延長
