@@ -515,8 +515,50 @@ class TwitterBot:
                 elif login_successful_element.get_attribute('name') == 'email_code' or \
                      login_successful_element.get_attribute('autocomplete') == 'one-time-code':
                     logger.info("Confirmation code input field detected after login.")
-                    # TODO: 認証コード入力のロジックを追加する必要がある（現時点ではログ出力のみ）
-                    # 例: コード入力、Nextボタンクリックなど
+                    
+                    # 認証コードを取得
+                    confirmation_code = self._get_twitter_confirmation_code()
+
+                    if confirmation_code:
+                        logger.info(f"Retrieved confirmation code: {confirmation_code}")
+                        try:
+                            # 認証コード入力フィールドにコードを入力
+                            code_input_field = self.wait.until(EC.element_to_be_clickable((By.XPATH, '//input[@name="email_code"] | //input[@autocomplete="one-time-code"]'))) # 再度待機して確実に要素を取得
+                            code_input_field.send_keys(confirmation_code)
+                            logger.info("Entered confirmation code.")
+
+                            # Nextボタンをクリック
+                            # 認証コード画面の「Next」ボタンのXPathを正確に特定してください
+                            next_button = self.wait.until(EC.element_to_be_clickable((By.XPATH, '//button[.//span[text()="Next"]]'))) # 仮のXPath
+                            next_button.click()
+                            logger.info("Clicked Next button on confirmation code screen.")
+
+                            # Nextボタンクリック後の画面遷移を待機（例: ホーム画面の要素など）
+                            logger.info("Waiting for post-confirmation screen...")
+                            self.wait.until(
+                                EC.presence_of_element_located((By.XPATH, '//div[@data-testid="tweetTextarea_0"] | //div[@aria-label="Home timeline"] | //a[@data-testid="AppTabBar_Home_Link"]')) # ログイン成功時の要素
+                            )
+                            logger.info("Successfully passed confirmation screen and logged in.")
+
+                        except TimeoutException:
+                            logger.error("Timeout while entering confirmation code or waiting for next screen.")
+                            # エラー処理
+                            screenshot_path = self._save_screenshot("confirmation_timeout")
+                            error_info = {'url': self.driver.current_url if self.driver else "N/A", 'error': "Timeout while entering confirmation code.", 'screenshot_path': screenshot_path}
+                            self._send_error_notification("Confirmation Timeout", error_info, [screenshot_path] if screenshot_path else [], "twitter_bot.log")
+                            raise TimeoutException("Timeout while entering confirmation code.") # 再スロー
+                        except Exception as e:
+                            logger.error(f"An error occurred while processing confirmation code: {str(e)}")
+                            # エラー処理
+                            screenshot_path = self._save_screenshot("confirmation_error")
+                            error_info = {'url': self.driver.current_url if self.driver else "N/A", 'error': f"Error processing confirmation code: {str(e)}", 'screenshot_path': screenshot_path}
+                            self._send_error_notification("Confirmation Error", error_info, [screenshot_path] if screenshot_path else [], "twitter_bot.log")
+                            raise # 再スロー
+
+                    else:
+                        logger.warning("Confirmation code not retrieved from email.")
+                        # TODO: コードが取得できなかった場合の代替処理（例: 手動入力を促す、エラーとして終了するなど）
+                        # 現時点では、コードが取得できない場合はそのままタイムアウト待機に進む可能性があります
 
                 else:
                     logger.warning(f"Unexpected element found after login: {login_successful_element.tag_name} with attributes {login_successful_element.get_webdriver_object().get_property('attributes')}")
@@ -563,10 +605,12 @@ class TwitterBot:
             }
             # パスワード入力前後のスクリーンショットを追加
             additional_screenshots = []
-            if 'screenshot_before_password' in locals() and screenshot_before_password:
-                additional_screenshots.append(screenshot_before_password)
-            if 'screenshot_after_password' in locals() and screenshot_after_password:
-                additional_screenshots.append(screenshot_after_password)
+            screenshot = locals().get('screenshot_before_password')
+            if screenshot:
+                additional_screenshots.append(screenshot)
+            screenshot = locals().get('screenshot_after_password')
+            if screenshot:
+                additional_screenshots.append(screenshot)
 
             self._send_error_notification("Login Failed", error_info, [screenshot_path] if screenshot_path else [] + additional_screenshots, "twitter_bot.log")
 
@@ -592,18 +636,117 @@ URL: {error_info.get('url', 'N/A')}
              all_screenshots.extend(screenshot_paths)
 
         # パスワード入力前後のスクリーンショット
-        if 'screenshot_before_password' in locals() and screenshot_before_password:
-            all_screenshots.append(screenshot_before_password)
-        if 'screenshot_after_password' in locals() and screenshot_after_password:
-            all_screenshots.append(screenshot_after_password)
+        screenshot = locals().get('screenshot_before_password')
+        if screenshot:
+            all_screenshots.append(screenshot)
+        screenshot = locals().get('screenshot_after_password')
+        if screenshot:
+            all_screenshots.append(screenshot)
 
         # ログインボタンクリック前後のスクリーンショット
-        if 'screenshot_before_login_click' in locals() and screenshot_before_login_click:
-             all_screenshots.append(screenshot_before_login_click)
-        if 'screenshot_after_login_click' in locals() and screenshot_after_login_click:
-             all_screenshots.append(screenshot_after_login_click)
+        screenshot = locals().get('screenshot_before_login_click')
+        if screenshot:
+            all_screenshots.append(screenshot)
+        screenshot = locals().get('screenshot_after_login_click')
+        if screenshot:
+            all_screenshots.append(screenshot)
 
         self._send_notification_email(subject, body, all_screenshots, log_file_path)
+
+    # GmailからTwitter認証コードを取得する関数を追加
+    def _get_twitter_confirmation_code(self) -> Optional[str]:
+        """Gmailから最新のTwitter認証コードメールを取得し、コードを抽出する"""
+        import imaplib
+        import email
+        import re
+
+        gmail_user = os.getenv("GMAIL_ADDRESS") # 環境変数からGmailアドレスを取得
+        gmail_app_password = os.getenv("GMAIL_APP_PASSWORD") # 環境変数からGmailアプリパスワードを取得
+
+        if not all([gmail_user, gmail_app_password]):
+            logger.warning("GMAIL_ADDRESS or GMAIL_APP_PASSWORD not set. Cannot retrieve confirmation code.")
+            return None
+
+        confirmation_code = None
+        try:
+            logger.info(f"Attempting to connect to Gmail IMAP server for user: {gmail_user}")
+            # IMAP_SSLでGmailに接続
+            mail = imaplib.IMAP4_SSL('imap.gmail.com')
+            # ログイン
+            mail.login(gmail_user, gmail_app_password)
+            logger.info("Logged in to Gmail IMAP server.")
+
+            # 受信トレイを選択
+            mail.select('inbox')
+            logger.info("Selected INBOX.")
+
+            # Twitterからの最新の認証コードメールを検索
+            # 送信元アドレスと件名でフィルタリング
+            # Twitterの認証コードメールの件名や送信元は変わる可能性があるため、適宜調整が必要
+            status, email_ids = mail.search(None,
+                                             '(FROM "info@x.com" SUBJECT "Your X confirmation code is ")')
+
+            if status == 'OK' and email_ids[0]:
+                # 最新のメールIDを取得
+                latest_email_id = email_ids[0].split()[-1]
+                logger.info(f"Found latest Twitter confirmation email with ID: {latest_email_id}")
+
+                # メールを取得
+                status, msg_data = mail.fetch(latest_email_id, '(RFC822)')
+                if status == 'OK':
+                    msg = email.message_from_bytes(msg_data[0][1])
+                    logger.info(f"Fetched email with subject: {msg['Subject']}")
+
+                    # メール本文から認証コードを抽出
+                    if msg.is_multipart():
+                        for part in msg.walk():
+                            ctype = part.get_content_type()
+                            cdisp = str(part.get('Content-Disposition'))
+
+                            # text/plain または text/html のパートを取得
+                            if ctype == 'text/plain' and 'attachment' not in cdisp:
+                                body = part.get_payload(decode=True).decode()
+                                # 本文から認証コード（例: 6桁の数字など、Twitterのコード形式に合わせる）を正規表現で抽出
+                                # 認証コードの形式に合わせて正規表現を調整してください
+                                match = re.search(r'is (\d{6})', body) # 例: "is 123456" の形式
+                                if match:
+                                    confirmation_code = match.group(1)
+                                    logger.info(f"Extracted confirmation code from plain text body: {confirmation_code}")
+                                    break # コードが見つかったらループを抜ける
+
+                            elif ctype == 'text/html' and 'attachment' not in cdisp:
+                                body = part.get_payload(decode=True).decode()
+                                # HTML本文から認証コードを抽出
+                                # 認証コードの形式に合わせて正規表現を調整してください
+                                match = re.search(r'>(\d{6})<', body) # 例: <div>123456</div> の形式
+                                if match:
+                                    confirmation_code = match.group(1)
+                                    logger.info(f"Extracted confirmation code from HTML body: {confirmation_code}")
+                                    break # コードが見つかったらループを抜ける
+
+                    # TODO: メールを既読にするなど、必要に応じて処理を追加
+                    # mail.store(latest_email_id, '+FLAGS', '\\Seen')
+
+                else:
+                    logger.error(f"Failed to fetch email with ID {latest_email_id}. Status: {status}")
+
+            else:
+                logger.warning("No Twitter confirmation email found in INBOX.")
+
+        except imaplib.IMAP4.error as e:
+            logger.error(f"IMAP error occurred: {str(e)}")
+        except Exception as e:
+            logger.error(f"An error occurred while retrieving confirmation code from email: {str(e)}")
+        finally:
+            # 接続を閉じる
+            if 'mail' in locals() and mail:
+                try:
+                    mail.logout()
+                    logger.info("Logged out from Gmail IMAP server.")
+                except Exception as e:
+                     logger.error(f"Error during IMAP logout: {str(e)}")
+
+        return confirmation_code
 
     def post_tweet(self, title: str, url: str) -> bool:
         """ツイートを投稿する"""
