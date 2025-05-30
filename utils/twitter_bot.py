@@ -501,12 +501,26 @@ class TwitterBot:
                 time.sleep(5)
                 logger.info("Finished short static wait after page load.")
 
-                # ツイート入力エリアまたはホームボタンの出現を待機
-                logger.info("Waiting for post-login elements (tweet area or home button)...")
-                self.wait.until(
-                    EC.presence_of_element_located((By.XPATH, '//div[@data-testid="tweetTextarea_0"] | //div[@aria-label="Home timeline"] | //a[@data-testid="AppTabBar_Home_Link"]'))
+                # ツイート入力エリア、ホームボタン、または認証コード入力フィールドの出現を待機
+                logger.info("Waiting for post-login elements (tweet area, home button, or confirmation code input)...")
+                login_successful_element = self.wait.until(
+                    EC.presence_of_element_located((By.XPATH, '//div[@data-testid="tweetTextarea_0"] | //div[@aria-label="Home timeline"] | //a[@data-testid="AppTabBar_Home_Link"] | //input[@name="email_code"] | //input[@autocomplete="one-time-code"]'))
                 )
-                logger.info("Successfully logged in to Twitter and post-login elements found.")
+
+                # どの要素が見つかったかログに出力
+                if login_successful_element.get_attribute('data-testid') == 'tweetTextarea_0' or \
+                   login_successful_element.get_attribute('aria-label') == 'Home timeline' or \
+                   login_successful_element.get_attribute('data-testid') == 'AppTabBar_Home_Link':
+                    logger.info("Successfully logged in to Twitter and post-login elements found.")
+                elif login_successful_element.get_attribute('name') == 'email_code' or \
+                     login_successful_element.get_attribute('autocomplete') == 'one-time-code':
+                    logger.info("Confirmation code input field detected after login.")
+                    # TODO: 認証コード入力のロジックを追加する必要がある（現時点ではログ出力のみ）
+                    # 例: コード入力、Nextボタンクリックなど
+
+                else:
+                    logger.warning(f"Unexpected element found after login: {login_successful_element.tag_name} with attributes {login_successful_element.get_webdriver_object().get_property('attributes')}")
+
             except TimeoutException:
                 logger.error("Timeout waiting for login completion elements or URL change.")
                 # タイムアウト時のスクリーンショットとメール通知
