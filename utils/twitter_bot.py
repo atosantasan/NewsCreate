@@ -484,109 +484,91 @@ class TwitterBot:
                 logger.error(f"Failed to send screenshots after login attempt email: {str(mail_e)}")
 
             # ログイン完了の待機
-            logger.info("Waiting for login completion...")
+            logger.info("Waiting for login completion or confirmation code screen...")
+            login_successful = False
             try:
-                # URLがログインページ以外に遷移するのを待機
-                logger.info(f"Waiting for URL to change from: {self.driver.current_url}")
-                WebDriverWait(self.driver, 180).until( # 待機時間を180秒に延長
-                    EC.url_changes('https://x.com/i/flow/login')
+                # 認証コード入力フィールドがクリック可能になるか待機（最長180秒）
+                logger.info("Waiting for confirmation code input field to be clickable...")
+                confirmation_code_input_field = self.wait.until(
+                    EC.element_to_be_clickable((By.XPATH, '//input[@name="email_code"] | //input[@autocomplete="one-time-code"] | //input[@data-testid="ocfEnterTextTextInput"]'))
                 )
-                logger.info(f"URL changed to: {self.driver.current_url}")
+                logger.info("Confirmation code input field found and is clickable.")
 
-                # ページ読み込み完了を待機
-                self._wait_for_page_load(timeout=180) # ページ読み込み待機も180秒に延長
-                logger.info("Page finished loading after URL change.")
+                # 認証コード処理に進む
+                confirmation_code = self._get_twitter_confirmation_code()
 
-                # 要素出現の前に短い静的待機
-                time.sleep(5)
-                logger.info("Finished short static wait after page load.")
+                if confirmation_code:
+                    logger.info(f"Retrieved confirmation code: {confirmation_code}")
+                    try:
+                        # コード入力フィールドに再度待機（念のため）
+                        code_input_field = self.wait.until(EC.element_to_be_clickable((By.XPATH, '//input[@name="email_code"] | //input[@autocomplete="one-time-code"] | //input[@data-testid="ocfEnterTextTextInput"]'))) # 再度待機して確実に要素を取得
+                        code_input_field.send_keys(confirmation_code)
+                        logger.info("Entered confirmation code.")
 
-                # ツイート入力エリア、ホームボタン、または認証コード入力フィールドの出現を待機
-                logger.info("Waiting for post-login elements (tweet area, home button, or confirmation code input)...")
-                login_successful_element = self.wait.until(
-                    EC.presence_of_element_located((By.XPATH, '//div[@data-testid="tweetTextarea_0"] | //div[@aria-label="Home timeline"] | //a[@data-testid="AppTabBar_Home_Link"] | //input[@name="email_code"] | //input[@autocomplete="one-time-code"]'))
-                )
+                        # Nextボタンをクリック
+                        # 日本語・英語両方に対応するXPathを使用
+                        next_button = self.wait.until(EC.element_to_be_clickable((By.XPATH, '//button[.//span[text()="次へ"] or .//span[text()="Next"]]')))
+                        next_button.click()
+                        logger.info("Clicked Next button on confirmation code screen.")
 
-                # どの要素が見つかったかログに出力
-                if login_successful_element.get_attribute('data-testid') == 'tweetTextarea_0' or \
-                   login_successful_element.get_attribute('aria-label') == 'Home timeline' or \
-                   login_successful_element.get_attribute('data-testid') == 'AppTabBar_Home_Link':
-                    logger.info("Successfully logged in to Twitter and post-login elements found.")
-                elif login_successful_element.get_attribute('name') == 'email_code' or \
-                     login_successful_element.get_attribute('autocomplete') == 'one-time-code':
-                    logger.info("Confirmation code input field detected after login.")
-                    
-                    # 認証コードを取得
-                    confirmation_code = self._get_twitter_confirmation_code()
+                        # Nextボタンクリック後の画面遷移を待機（例: ホーム画面の要素など）
+                        logger.info("Waiting for post-confirmation screen...")
+                        self.wait.until(
+                            EC.presence_of_element_located((By.XPATH, '//div[@data-testid="tweetTextarea_0"] | //div[@aria-label="Home timeline"] | //a[@data-testid="AppTabBar_Home_Link"]')) # ログイン成功時の要素
+                        )
+                        logger.info("Successfully passed confirmation screen and logged in.")
+                        login_successful = True
 
-                    if confirmation_code:
-                        logger.info(f"Retrieved confirmation code: {confirmation_code}")
-                        try:
-                            # 認証コード入力フィールドにコードを入力
-                            code_input_field = self.wait.until(EC.element_to_be_clickable((By.XPATH, '//input[@name="email_code"] | //input[@autocomplete="one-time-code"]'))) # 再度待機して確実に要素を取得
-                            code_input_field.send_keys(confirmation_code)
-                            logger.info("Entered confirmation code.")
-
-                            # Nextボタンをクリック
-                            # 認証コード画面の「Next」ボタンのXPathを正確に特定してください
-                            next_button = self.wait.until(EC.element_to_be_clickable((By.XPATH, '//button[.//span[text()="Next"]]'))) # 仮のXPath
-                            next_button.click()
-                            logger.info("Clicked Next button on confirmation code screen.")
-
-                            # Nextボタンクリック後の画面遷移を待機（例: ホーム画面の要素など）
-                            logger.info("Waiting for post-confirmation screen...")
-                            self.wait.until(
-                                EC.presence_of_element_located((By.XPATH, '//div[@data-testid="tweetTextarea_0"] | //div[@aria-label="Home timeline"] | //a[@data-testid="AppTabBar_Home_Link"]')) # ログイン成功時の要素
-                            )
-                            logger.info("Successfully passed confirmation screen and logged in.")
-
-                        except TimeoutException:
-                            logger.error("Timeout while entering confirmation code or waiting for next screen.")
-                            # エラー処理
-                            screenshot_path = self._save_screenshot("confirmation_timeout")
-                            error_info = {'url': self.driver.current_url if self.driver else "N/A", 'error': "Timeout while entering confirmation code.", 'screenshot_path': screenshot_path}
-                            self._send_error_notification("Confirmation Timeout", error_info, [screenshot_path] if screenshot_path else [], "twitter_bot.log")
-                            raise TimeoutException("Timeout while entering confirmation code.") # 再スロー
-                        except Exception as e:
-                            logger.error(f"An error occurred while processing confirmation code: {str(e)}")
-                            # エラー処理
-                            screenshot_path = self._save_screenshot("confirmation_error")
-                            error_info = {'url': self.driver.current_url if self.driver else "N/A", 'error': f"Error processing confirmation code: {str(e)}", 'screenshot_path': screenshot_path}
-                            self._send_error_notification("Confirmation Error", error_info, [screenshot_path] if screenshot_path else [], "twitter_bot.log")
-                            raise # 再スロー
-
-                    else:
-                        logger.warning("Confirmation code not retrieved from email.")
-                        # TODO: コードが取得できなかった場合の代替処理（例: 手動入力を促す、エラーとして終了するなど）
-                        # 現時点では、コードが取得できない場合はそのままタイムアウト待機に進む可能性があります
+                    except TimeoutException:
+                        logger.error("Timeout while entering confirmation code or waiting for next screen.")
+                        screenshot_path = self._save_screenshot("confirmation_timeout")
+                        error_info = {'url': self.driver.current_url if self.driver else "N/A", 'error': "Timeout while entering confirmation code.", 'screenshot_path': screenshot_path}
+                        self._send_error_notification("Confirmation Timeout", error_info, [screenshot_path] if screenshot_path else [], "twitter_bot.log")
+                        raise TimeoutException("Timeout while entering confirmation code.") # 再スロー
+                    except Exception as e:
+                        logger.error(f"An error occurred while processing confirmation code: {str(e)}")
+                        screenshot_path = self._save_screenshot("confirmation_error")
+                        error_info = {'url': self.driver.current_url if self.driver else "N/A", 'error': f"Error processing confirmation code: {str(e)}", 'screenshot_path': screenshot_path}
+                        self._send_error_notification("Confirmation Error", error_info, [screenshot_path] if screenshot_path else [], "twitter_bot.log")
+                        raise # 再スロー
 
                 else:
-                    logger.warning(f"Unexpected element found after login: {login_successful_element.tag_name} with attributes {login_successful_element.get_webdriver_object().get_property('attributes')}")
+                    logger.warning("Confirmation code not retrieved from email. Cannot proceed with confirmation.")
+                    raise Exception("Confirmation code not retrieved from email.") # エラーとして終了させる
 
             except TimeoutException:
-                logger.error("Timeout waiting for login completion elements or URL change.")
-                # タイムアウト時のスクリーンショットとメール通知
-                screenshot_path = self._save_screenshot("login_completion_timeout")
-                error_info = {
-                    'url': self.driver.current_url if self.driver else "N/A",
-                    'error': "Timeout waiting for login completion elements or URL change.",
-                    'screenshot_path': screenshot_path
-                }
-                self._send_error_notification("Login Completion Timeout", error_info, [screenshot_path] if screenshot_path else [], "twitter_bot.log")
-                raise TimeoutException("Timeout waiting for login completion elements or URL change.")
-            except Exception as e:
-                logger.error(f"An error occurred during login completion wait: {str(e)}")
-                # ログイン完了待機中の予期せぬエラー時のスクリーンショットとメール通知
-                screenshot_path = self._save_screenshot("login_completion_error")
-                error_info = {
-                    'url': self.driver.current_url if self.driver else "N/A",
-                    'error': str(e),
-                    'screenshot_path': screenshot_path
-                }
-                self._send_error_notification("Login Completion Error", error_info, [screenshot_path] if screenshot_path else [], "twitter_bot.log")
-                raise
+                # 認証コード入力フィールドが見つからなかった場合、ログイン成功要素が出現するか待機
+                logger.info("Confirmation code input field not found within timeout. Waiting for standard login completion elements...")
+                try:
+                    self.wait.until(
+                         EC.presence_of_element_located((By.XPATH, '//div[@data-testid="tweetTextarea_0"] | //div[@aria-label="Home timeline"] | //a[@data-testid="AppTabBar_Home_Link"]')) # ログイン成功時の要素のみ待機
+                    )
+                    logger.info("Standard login completion elements found.")
+                    login_successful = True
+                except TimeoutException:
+                     logger.error("Timeout waiting for standard login completion elements.")
+                     screenshot_path = self._save_screenshot("login_completion_timeout")
+                     error_info = {
+                         'url': self.driver.current_url if self.driver else "N/A",
+                         'error': "Timeout waiting for standard login completion elements.",
+                         'screenshot_path': screenshot_path
+                     }
+                     self._send_error_notification("Login Completion Timeout (No Confirmation)", error_info, [screenshot_path] if screenshot_path else [], "twitter_bot.log")
+                     raise TimeoutException("Timeout waiting for standard login completion elements (No confirmation screen detected).") # 再スロー
 
-            return True
+            except Exception as e:
+                 logger.error(f"An unexpected error occurred during login completion wait: {str(e)}")
+                 screenshot_path = self._save_screenshot("login_completion_error")
+                 error_info = {
+                     'url': self.driver.current_url if self.driver else "N/A",
+                     'error': str(e),
+                     'screenshot_path': screenshot_path
+                 }
+                 self._send_error_notification("Login Completion Error", error_info, [screenshot_path] if screenshot_path else [], "twitter_bot.log")
+                 raise # 再スロー
+
+            # ログイン成功要素が見つかるか、認証コード処理が完了すればTrueを返す
+            return login_successful
             
         except Exception as e:
             logger.error(f"Login failed: {str(e)}")
