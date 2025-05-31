@@ -91,7 +91,8 @@ class NewsFetcher:
                         
                         article = {
                             "title": entry.title,
-                            "content": article_content or entry.get("summary", ""),  # コンテンツ取得に失敗した場合はsummaryを使用
+#                            "content": article_content or entry.get("summary", ""),  # コンテンツ取得に失敗した場合はsummaryを使用
+                            "content": article_content,  # コンテンツ取得に失敗した場合はsummaryを使用
                             "url": article_url,
                             "published": entry.get("published", datetime.now().isoformat()),
                             "source": url
