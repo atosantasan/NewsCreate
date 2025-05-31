@@ -301,6 +301,8 @@ class TwitterBot:
             
             # 自動化検出対策のJavaScript実行
             self._apply_stealth_script()
+            # 追加のステルスJavaScriptを実行
+            self._apply_advanced_stealth_js()
             
         except Exception as e:
             logger.error(f"Failed to setup Chrome driver: {str(e)}")
@@ -316,9 +318,48 @@ class TwitterBot:
                 get: () => undefined
               })
             """)
-            logger.info("Applied stealth script")
+            logger.info("Applied navigator.webdriver stealth script")
         except Exception as e:
-            logger.error(f"Failed to apply stealth script: {str(e)}")
+            logger.error(f"Failed to apply navigator.webdriver stealth script: {str(e)}")
+
+    def _apply_advanced_stealth_js(self):
+        """より高度なWebDriver検出回避のためのJavaScriptを実行"""
+        try:
+            # window.chromeのプロパティを偽装
+            self.driver.execute_script("""
+                if (window.chrome) {
+                    Object.defineProperty(window.chrome, 'webstore', { get: () => undefined });
+                    Object.defineProperty(window.chrome, 'runtime', { get: () => undefined });
+                    Object.defineProperty(window.chrome, 'csi', { get: () => undefined });
+                }
+            """)
+            logger.info("Applied window.chrome stealth script")
+
+            # navigator.pluginsとnavigator.languagesの偽装（Selenium-Stealthで一部行われるが補強）
+            self.driver.execute_script("""
+                Object.defineProperty(navigator, 'plugins', { get: () => [] });
+                Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+            """)
+            logger.info("Applied navigator.plugins and navigator.languages stealth script")
+
+            # iframe内のwindow.navigator.webdriver偽装 (広告などが使う可能性)
+            self.driver.execute_script("""
+                const handleIframes = (iframe) => {
+                    try {
+                        if (iframe.contentWindow) {
+                            Object.defineProperty(iframe.contentWindow.navigator, 'webdriver', { get: () => undefined });
+                        }
+                    } catch (e) {
+                        // Cross-origin iframe, ignore
+                    }
+                };
+                document.querySelectorAll('iframe').forEach(handleIframes);
+            """)
+            logger.info("Applied iframe navigator.webdriver stealth script")
+
+
+        except Exception as e:
+            logger.error(f"Failed to apply advanced stealth JavaScript: {str(e)}")
             
     def _handle_security_modal(self):
         """セキュリティモーダルの処理"""
@@ -496,15 +537,14 @@ class TwitterBot:
 
             screenshot_before_password_wait = self._save_screenshot("before_password_wait")
             logger.info(f"Screenshot saved before password input field wait: {screenshot_before_password_wait}")
-            self._send_debug_screenshot_email("Before Password Wait", self._collect_screenshots(screenshot_initial_load, screenshot_after_page_load, screenshot_after_username_input, screenshot_after_userid_input if 'screenshot_after_userid_input' in locals() else (screenshot_after_userid_check_skipped if 'screenshot_after_userid_check_skipped' in locals() else None), screenshot_before_password_wait))
 
             try:
                 # パスワード入力フィールドがクリック可能になるか、または特定の時間待機
                 # Renderのワーカータイムアウトに注意しつつ、少し長めに設定
                 password_input = WebDriverWait(self.driver, 90).until(
-                    EC.element_to_be_clickable((By.XPATH, '//input[@name="password"]')) # ここは元のXPathに戻しました
+                    EC.element_to_be_clickable((By.XPATH, '//input[@name="password"]'))
                 )
-                logger.info("Password input field found and is clickable.") # ログメッセージは修正が必要です
+                logger.info("Password input field found and is clickable.")
 
                 screenshot_before_password = self._save_screenshot("before_password_input")
                 logger.info(f"Screenshot saved before password input: {screenshot_before_password}")
@@ -784,7 +824,7 @@ URL: {error_info.get('url', 'N/A')}
                 screenshot_path = self._save_screenshot("post_button_not_found")
                 error_info = {'url': self.driver.current_url if self.driver else "N/A", 'error': "Tweet post button not found.", 'screenshot_path': screenshot_path}
                 self._send_error_notification("Tweet Post Button Not Found", error_info, [screenshot_path] if screenshot_path else [], "twitter_bot.log")
-                raise NoSuchElementException("Tweet post button not found.")
+                raise NoSuchElementException("Tweet Post Button Not Found.")
             except Exception as e:
                 logger.error(f"Error clicking tweet post button: {str(e)}")
                 screenshot_path = self._save_screenshot("post_button_error")
@@ -838,7 +878,7 @@ URL: {error_info.get('url', 'N/A')}
                 screenshot_path = self._save_screenshot("final_tweet_button_not_found")
                 error_info = {'url': self.driver.current_url if self.driver else "N/A", 'error': "Final tweet button not found.", 'screenshot_path': screenshot_path}
                 self._send_error_notification("Final Tweet Button Not Found", error_info, [screenshot_path] if screenshot_path else [], "twitter_bot.log")
-                raise NoSuchElementException("Final tweet button not found.")
+                raise NoSuchElementException("Final Tweet Button Not Found.")
             except Exception as e:
                 logger.error(f"Error clicking final tweet button: {str(e)}")
                 screenshot_path = self._save_screenshot("final_tweet_button_error")
