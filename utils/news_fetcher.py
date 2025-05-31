@@ -1,6 +1,6 @@
 import feedparser
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from datetime import datetime
 import os
 from dotenv import load_dotenv
@@ -18,10 +18,14 @@ class NewsFetcher:
             ]
             logger.warning("Using default RSS feeds as no feeds were configured in environment variables")
 
-    def fetch_news(self) -> List[Dict[str, Any]]:
+    def fetch_news(self, max_articles: Optional[int] = None) -> List[Dict[str, Any]]:
         """
-        RSSフィードからニュース記事を取得する
-        
+        RSSフィードからニュース記事を取得する。
+        取得する記事の最大件数を指定できる。
+
+        Args:
+            max_articles (Optional[int]): 取得する記事の最大件数。Noneの場合は全ての記事を取得。
+
         Returns:
             List[Dict[str, Any]]: 取得したニュース記事のリスト
         """
@@ -46,6 +50,12 @@ class NewsFetcher:
                             "source": url
                         }
                         articles.append(article)
+                        
+                        # 取得件数が最大件数に達したらループを抜ける
+                        if max_articles is not None and len(articles) >= max_articles:
+                            logger.info(f"Reached maximum number of articles ({max_articles}). Stopping fetch.")
+                            break # entry ループを抜ける
+
                     except Exception as e:
                         logger.error(f"Error processing entry from {url}: {str(e)}")
                         continue
@@ -53,6 +63,10 @@ class NewsFetcher:
             except Exception as e:
                 logger.error(f"Error fetching feed from {url}: {str(e)}")
                 continue
+                
+            # 取得件数が最大件数に達したら外側のフィードループも抜ける
+            if max_articles is not None and len(articles) >= max_articles:
+                break # url ループを抜ける
                 
         logger.info(f"Successfully fetched {len(articles)} articles")
         return articles
