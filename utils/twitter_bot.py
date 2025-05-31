@@ -93,7 +93,7 @@ class TwitterBot:
             process = psutil.Process(os.getpid())
             memory_info = process.memory_info()
             memory_percent = process.memory_percent()
-            logger.info(f"Memory usage: {memory_info.rss / 1024 / 1024:.2f} MB ({memory_percent:.1f}%)")
+            logger.info(f"Memory usage: {memory_info.rss / 1024 / 1024:.2f} MB ({memory_percent:.1f}%) ")
             
             if memory_percent > 80:
                 logger.warning("High memory usage detected")
@@ -410,7 +410,7 @@ class TwitterBot:
                 body_element = self.driver.find_element(By.TAG_NAME, 'body')
                 body_element.click()
                 logger.info("Clicked body element to potentially prompt rendering.")
-                time.sleep(1)  # 静的待機を1秒に短縮
+                time.sleep(random.uniform(0.5, 1.5))  # 静的待機をランダム化
             except Exception as e:
                 logger.warning(f"Could not click body element: {str(e)}")
 
@@ -428,10 +428,12 @@ class TwitterBot:
                 logger.info("Username/Email input field found.")
 
                 initial_input.clear()
+                # タイピングを人間らしくシミュレーション
                 for char in self.twitter_id:
                     initial_input.send_keys(char)
-                    time.sleep(0.1)
-                time.sleep(1)  # 入力後の静的待機を1秒に短縮
+                    time.sleep(random.uniform(0.05, 0.2)) # ランダムな短い遅延
+                # 入力後の静的待機をランダム化
+                time.sleep(random.uniform(1, 3))
                 initial_input.send_keys(Keys.RETURN)
                 logger.info("Entered username/email and pressed RETURN.")
                 
@@ -457,10 +459,12 @@ class TwitterBot:
                 logger.info("User ID input field found.")
 
                 user_id_input.clear()
+                # タイピングを人間らしくシミュレーション
                 for char in self.twitter_user_id:
                     user_id_input.send_keys(char)
-                    time.sleep(0.1)
-                time.sleep(1)  # 入力後の静的待機を1秒に短縮
+                    time.sleep(random.uniform(0.05, 0.2)) # ランダムな短い遅延
+                # 入力後の静的待機をランダム化
+                time.sleep(random.uniform(1, 3))
                 user_id_input.send_keys(Keys.RETURN)
                 logger.info("Entered user ID and pressed RETURN.")
 
@@ -480,8 +484,9 @@ class TwitterBot:
             # ユーザーID入力後の画面遷移とページ読み込み完了を待機
             self._wait_for_page_load(timeout=30)
             logger.info("Page loaded after User ID submission (if applicable).")
-            time.sleep(1)  # 静的待機を1秒に短縮
-            logger.info("Finished short static wait after user ID submission.")
+            # 静的待機をランダム化
+            time.sleep(random.uniform(1, 3))
+            logger.info("Finished short random static wait after user ID submission.")
 
             # エラーモーダルが表示されていないかチェックし、表示されていれば閉じる
             try:
@@ -498,7 +503,7 @@ class TwitterBot:
                 )
                 logger.info("Error modal closed successfully.")
                 # モーダルを閉じた後に少し待機
-                time.sleep(2)
+                time.sleep(random.uniform(1, 3))
 
             except TimeoutException:
                 logger.info("No error modal detected or could not close within timeout.")
@@ -553,17 +558,21 @@ class TwitterBot:
                 password_input.click()
                 logger.info("Password input field clicked.")
 
+                # タイピングを人間らしくシミュレーション
                 actions = ActionChains(self.driver)
-                actions.send_keys_to_element(password_input, self.twitter_password)
+                for char in self.twitter_password:
+                     actions.send_keys(char)
+                     actions.pause(random.uniform(0.05, 0.2)) # ランダムな短い遅延
                 actions.perform()
-                logger.info("Password entered via ActionChains.")
+                logger.info("Password entered via ActionChains with human-like typing.")
 
                 screenshot_after_password = self._save_screenshot("after_password_input")
                 logger.info(f"Screenshot saved after password input: {screenshot_after_password}")
                 self._send_debug_screenshot_email("After Password Input", self._collect_screenshots(screenshot_initial_load, screenshot_after_page_load, screenshot_after_username_input, screenshot_after_userid_input if 'screenshot_after_userid_input' in locals() else (screenshot_after_userid_check_skipped if 'screenshot_after_userid_check_skipped' in locals() else None), screenshot_before_password_wait, screenshot_before_password, screenshot_after_password))
 
-                time.sleep(1)  # 静的待機を1秒に短縮
-                logger.info("Finished static wait after password input.")
+                # 静的待機をランダム化
+                time.sleep(random.uniform(1, 3))
+                logger.info("Finished random static wait after password input.")
 
                 screenshot_before_login_click = self._save_screenshot("before_login_click")
                 logger.info(f"Screenshot saved before login click: {screenshot_before_login_click}")
@@ -572,8 +581,9 @@ class TwitterBot:
                 password_input.send_keys(Keys.RETURN)
                 logger.info("Pressed RETURN on password input field (attempting login).")
 
-                time.sleep(1)  # 静的待機を1秒に短縮
-                logger.info("Finished short static wait after login attempt.")
+                # 静的待機をランダム化
+                time.sleep(random.uniform(1, 3))
+                logger.info("Finished short random static wait after login attempt.")
 
                 screenshot_after_login_click = self._save_screenshot("after_login_click")
                 logger.info(f"Screenshot saved after login click: {screenshot_after_login_click}")
@@ -808,7 +818,7 @@ URL: {error_info.get('url', 'N/A')}
             # ツイート作成画面を開く
             logger.info("Opening tweet composition screen...")
             # ログイン後の画面が安定するまで待機
-            time.sleep(5) # ログイン後の静的待機を追加
+            time.sleep(random.uniform(3, 7)) # ログイン後の静的待機をランダム化
 
             try:
                 post_button = self.wait.until(EC.element_to_be_clickable((By.XPATH, '//a[@aria-label="Post"]')))
@@ -835,13 +845,18 @@ URL: {error_info.get('url', 'N/A')}
             # ツイート内容の入力
             logger.info("Entering tweet content...")
             # ツイート作成モーダルが表示されるのを待機
-            time.sleep(3) # モーダル表示の静的待機を追加
+            time.sleep(random.uniform(2, 4)) # モーダル表示の静的待機をランダム化
 
             try:
                 tweet_box = self.wait.until(EC.presence_of_element_located((By.XPATH, '//div[@data-testid="tweetTextarea_0"]')))
                 tweet_content = f"{title}\n{url}"
-                tweet_box.send_keys(tweet_content)
-                time.sleep(2)
+                # タイピングを人間らしくシミュレーション
+                actions = ActionChains(self.driver)
+                for char in tweet_content:
+                    actions.send_keys(char)
+                    actions.pause(random.uniform(0.03, 0.15)) # ランダムな短い遅延
+                actions.perform()
+                time.sleep(random.uniform(1, 3))
             except TimeoutException:
                 logger.error("Timeout waiting for tweet text area.")
                 screenshot_path = self._save_screenshot("tweet_area_timeout")
@@ -888,7 +903,7 @@ URL: {error_info.get('url', 'N/A')}
 
             # 投稿完了の待機 (成功メッセージやツイートが表示されるのを待つなど、より具体的な条件にすることも検討)
             logger.info("Waiting for tweet completion...")
-            time.sleep(10) # 一旦静的な待機
+            time.sleep(random.uniform(5, 15)) # 投稿後の静的な待機をランダム化
             # TODO: ツイートが成功したことを示す要素や画面遷移を待つ条件を追加
             logger.info("Tweet posting process finished (Success confirmation might be needed).")
 
