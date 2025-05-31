@@ -158,12 +158,7 @@ class NewsFetcher:
                         article_url = entry.link
                         article_content = self._fetch_article_content(article_url)
                         
-                        # コンテンツが空の場合はsummaryを使用
-                        if not article_content and 'summary' in entry:
-                            logger.info(f"Using RSS summary as fallback for {article_url}")
-                            article_content = entry.summary
-                        
-                        # コンテンツがnullでない場合のみ追加
+                        # コンテンツが取得できた場合のみ追加
                         if article_content:
                             article = {
                                 "title": entry.title,
