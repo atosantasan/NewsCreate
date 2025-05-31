@@ -44,7 +44,7 @@ class NewsFetcher:
             soup = BeautifulSoup(response.text, 'html.parser')
             
             # 不要な要素を削除
-            for tag in soup(['script', 'style', 'nav', 'header', 'footer', 'aside']):
+            for tag in soup(['script', 'style', 'nav', 'header', 'footer', 'aside', 'iframe', 'form', 'button']):
                 tag.decompose()
             
             # メインコンテンツを取得（サイトによって異なる可能性がある）
@@ -58,7 +58,39 @@ class NewsFetcher:
                 'div.entry-content',
                 'div.story-body',
                 'div.article-body',
-                'div.article-content'
+                'div.article-content',
+                'div.post-content',
+                'div.entry',
+                'div.post-body',
+                'div.article-text',
+                'div.article-main',
+                'div.article-detail',
+                'div.article-body-text',
+                'div.article-body-content',
+                'div.article-body-main',
+                'div.article-body-detail',
+                'div.article-body-text-content',
+                'div.article-body-text-main',
+                'div.article-body-text-detail',
+                'div.article-body-text-content-main',
+                'div.article-body-text-content-detail',
+                'div.article-body-text-main-detail',
+                'div.article-body-text-content-main-detail',
+                'div.article-body-text-content-main-detail-content',
+                'div.article-body-text-content-main-detail-text',
+                'div.article-body-text-content-main-detail-main',
+                'div.article-body-text-content-main-detail-detail',
+                'div.article-body-text-content-main-detail-content-text',
+                'div.article-body-text-content-main-detail-content-main',
+                'div.article-body-text-content-main-detail-content-detail',
+                'div.article-body-text-content-main-detail-text-main',
+                'div.article-body-text-content-main-detail-text-detail',
+                'div.article-body-text-content-main-detail-main-detail',
+                'div.article-body-text-content-main-detail-content-text-main',
+                'div.article-body-text-content-main-detail-content-text-detail',
+                'div.article-body-text-content-main-detail-content-main-detail',
+                'div.article-body-text-content-main-detail-text-main-detail',
+                'div.article-body-text-content-main-detail-content-text-main-detail'
             ]
             
             for selector in content_selectors:
