@@ -240,9 +240,9 @@ class TwitterBot:
             options.add_argument("--disable-sync")
             options.add_argument("--disable-background-networking")
             options.add_argument("--disable-background-timer-throttling")
-            options.add_argument("--disable-backgrounding-occluded-windows")
+            options.add_argument("--disable-backgrounding_occluded_windows")
             options.add_argument("--disable-breakpad")
-            options.add_argument("--disable-component-extensions-with-background-pages")
+            options.add_argument("--disable-component-extensions_with_background_pages")
             options.add_argument("--disable-features=TranslateUI")
             options.add_argument("--disable-ipc-flooding-protection")
             options.add_argument("--disable-renderer-backgrounding")
@@ -424,8 +424,13 @@ class TwitterBot:
             # ユーザー名/メールアドレス入力
             logger.info("Entering username/email...")
             try:
+                # 要素が表示されるまで待機
                 initial_input = self.wait.until(EC.presence_of_element_located((By.XPATH, '//input[@autocomplete="username"] | //input[@name="text"]')))
                 logger.info("Username/Email input field found.")
+
+                # 人間らしい操作シミュレーション: スクロールとマウス移動
+                self._simulate_human_like_movement(initial_input)
+                time.sleep(random.uniform(0.5, 1.5)) # 操作前の短い待機
 
                 initial_input.clear()
                 # タイピングを人間らしくシミュレーション
@@ -451,12 +456,24 @@ class TwitterBot:
                 }
                 self._send_error_notification("Username/Email Timeout", error_info, self._collect_screenshots(screenshot_initial_load, screenshot_after_page_load, screenshot_after_username_input, screenshot_path), "twitter_bot.log")
                 raise TimeoutException("Timeout waiting for username/email input field.")
+            except Exception as e:
+                 logger.error(f"Error during username/email input: {str(e)}")
+                 screenshot_path = self._save_screenshot("username_input_error")
+                 error_info = {'url': self.driver.current_url if self.driver else "N/A", 'error': f"Error during username/email input: {str(e)}", 'screenshot_path': screenshot_path}
+                 self._send_error_notification("Username Input Error", error_info, self._collect_screenshots(screenshot_initial_load, screenshot_after_page_load, screenshot_after_username_input, screenshot_path), "twitter_bot.log")
+                 raise
+
 
             # ユーザーID確認（必要な場合）
             try:
                 logger.info("Checking for user ID verification...")
+                # 要素が表示されるまで待機
                 user_id_input = self.wait.until(EC.presence_of_element_located((By.XPATH, '//input[@name="text" and @data-testid="ocfEnterTextTextInput"]')))
                 logger.info("User ID input field found.")
+
+                # 人間らしい操作シミュレーション: スクロールとマウス移動
+                self._simulate_human_like_movement(user_id_input)
+                time.sleep(random.uniform(0.5, 1.5)) # 操作前の短い待機
 
                 user_id_input.clear()
                 # タイピングを人間らしくシミュレーション
@@ -477,6 +494,12 @@ class TwitterBot:
                 screenshot_after_userid_check_skipped = self._save_screenshot("after_userid_check_skipped")
                 logger.info(f"Screenshot saved after user ID check skipped: {screenshot_after_userid_check_skipped}")
                 self._send_debug_screenshot_email("After User ID Check Skipped", self._collect_screenshots(screenshot_initial_load, screenshot_after_page_load, screenshot_after_username_input, screenshot_after_userid_check_skipped))
+            except Exception as e:
+                 logger.error(f"Error during user ID input: {str(e)}")
+                 screenshot_path = self._save_screenshot("userid_input_error")
+                 error_info = {'url': self.driver.current_url if self.driver else "N/A", 'error': f"Error during user ID input: {str(e)}", 'screenshot_path': screenshot_path}
+                 self._send_error_notification("User ID Input Error", error_info, self._collect_screenshots(screenshot_initial_load, screenshot_after_page_load, screenshot_after_username_input, screenshot_after_userid_input if 'screenshot_after_userid_input' in locals() else (screenshot_after_userid_check_skipped if 'screenshot_after_userid_check_skipped' in locals() else None), screenshot_path), "twitter_bot.log")
+                 raise
 
             # パスワード入力
             logger.info("Entering password...")
@@ -514,6 +537,7 @@ class TwitterBot:
                 error_info = {'url': self.driver.current_url if self.driver else "N/A", 'error': f"Error handling modal: {str(e)}", 'screenshot_path': screenshot_path}
                 self._send_error_notification("Error Modal Handling Failed", error_info, self._collect_screenshots(screenshot_path), "twitter_bot.log")
 
+
             # エラーモーダル処理後、現在のURLを確認
             current_url_after_modal = self.driver.current_url if self.driver else "N/A"
             logger.info(f"Current URL after error modal check: {current_url_after_modal}")
@@ -529,7 +553,8 @@ class TwitterBot:
                 except Exception as source_e:
                     logger.error(f"Failed to get page source after redirect: {str(source_e)}")
 
-                logger.error(f"Page Source after redirect:\n{page_source[:1000]}...") # 長すぎないように一部を出力
+                logger.error(f"Current URL: {current_url_after_modal}")
+                logger.error(f"Page Source:\n{page_source[:1000]}...") # 長すぎないように一部を出力
 
                 error_info = {
                     'url': current_url_after_modal,
@@ -537,19 +562,23 @@ class TwitterBot:
                     'screenshot_path': screenshot_path
                 }
                 # これまでのスクリーンショットと合わせてエラー通知
-                self._send_error_notification("Login Redirect Failed", error_info, self._collect_screenshots(screenshot_initial_load, screenshot_after_page_load, screenshot_after_username_input, screenshot_after_userid_input if 'screenshot_after_userid_input' in locals() else (screenshot_after_userid_check_skipped if 'screenshot_after_userid_check_skipped' in locals() else None), screenshot_before_password_wait, screenshot_path), "twitter_bot.log")
+                self._send_error_notification("Login Redirect Failed", error_info, self._collect_screenshots(screenshot_initial_load, screenshot_after_page_load, screenshot_after_username_input, screenshot_after_userid_input if 'screenshot_after_userid_input' in locals() else (screenshot_after_userid_check_skipped if 'screenshot_after_userid_check_skipped' in locals() else None), screenshot_before_password_wait, screenshot_before_password, screenshot_after_password, screenshot_before_login_click, screenshot_after_login_click, screenshot_path), "twitter_bot.log")
                 return False # ログイン失敗を示すFalseを返す
+
 
             screenshot_before_password_wait = self._save_screenshot("before_password_wait")
             logger.info(f"Screenshot saved before password input field wait: {screenshot_before_password_wait}")
 
             try:
-                # パスワード入力フィールドがクリック可能になるか、または特定の時間待機
-                # Renderのワーカータイムアウトに注意しつつ、少し長めに設定
+                # パスワード入力フィールドがクリック可能になるまで待機 (タイムアウトは長めに設定)
                 password_input = WebDriverWait(self.driver, 90).until(
                     EC.element_to_be_clickable((By.XPATH, '//input[@name="password"]'))
                 )
                 logger.info("Password input field found and is clickable.")
+
+                # 人間らしい操作シミュレーション: スクロールとマウス移動
+                self._simulate_human_like_movement(password_input)
+                time.sleep(random.uniform(0.5, 1.5)) # 操作前の短い待機
 
                 screenshot_before_password = self._save_screenshot("before_password_input")
                 logger.info(f"Screenshot saved before password input: {screenshot_before_password}")
@@ -578,8 +607,13 @@ class TwitterBot:
                 logger.info(f"Screenshot saved before login click: {screenshot_before_login_click}")
                 self._send_debug_screenshot_email("Before Login Click", self._collect_screenshots(screenshot_initial_load, screenshot_after_page_load, screenshot_after_username_input, screenshot_after_userid_input if 'screenshot_after_userid_input' in locals() else (screenshot_after_userid_check_skipped if 'screenshot_after_userid_check_skipped' in locals() else None), screenshot_before_password_wait, screenshot_before_password, screenshot_after_password, screenshot_before_login_click))
 
+                # ログインボタン（ENTER）押下前に人間らしい操作シミュレーション
+                # ここでは要素へのマウス移動は不要かもしれないが、カーソルがPasswordFieldにあるため
+                # 必要に応じてランダムな短い遅延などを挟む
+                time.sleep(random.uniform(0.5, 1.5))
+
                 password_input.send_keys(Keys.RETURN)
-                logger.info("Pressed RETURN on password input field (attempting login).")
+                logger.info("Pressed RETURN on password input field (attempting login).\n")
 
                 # 静的待機をランダム化
                 time.sleep(random.uniform(1, 3))
@@ -610,6 +644,13 @@ class TwitterBot:
                 }
                 self._send_error_notification("Password Input Timeout", error_info, self._collect_screenshots(screenshot_initial_load, screenshot_after_page_load, screenshot_after_username_input, screenshot_after_userid_input if 'screenshot_after_userid_input' in locals() else (screenshot_after_userid_check_skipped if 'screenshot_after_userid_check_skipped' in locals() else None), screenshot_before_password_wait, screenshot_before_password, screenshot_after_password, screenshot_before_login_click, screenshot_after_login_click, screenshot_path), "twitter_bot.log")
                 raise TimeoutException("Timeout waiting for password input field.")
+            except Exception as e:
+                logger.error(f"Error during password input: {str(e)}")
+                screenshot_path = self._save_screenshot("password_input_error")
+                error_info = {'url': self.driver.current_url if self.driver else "N/A", 'error': f"Error during password input: {str(e)}", 'screenshot_path': screenshot_path}
+                self._send_error_notification("Password Input Error", error_info, self._collect_screenshots(screenshot_initial_load, screenshot_after_page_load, screenshot_after_username_input, screenshot_after_userid_input if 'screenshot_after_userid_input' in locals() else (screenshot_after_userid_check_skipped if 'screenshot_after_userid_check_skipped' in locals() else None), screenshot_before_password_wait, screenshot_before_password, screenshot_after_password, screenshot_path), "twitter_bot.log")
+                raise
+
 
             # ログイン完了の待機
             logger.info("Waiting for login completion or confirmation code screen...")
@@ -629,10 +670,12 @@ class TwitterBot:
                     # 認証コード入力処理
                     # ... 既存の認証コード処理コード ...
 
+
             except TimeoutException:
                 # 認証コード入力フィールドが見つからなかった場合、ログイン成功要素が出現するか待機
                 logger.info("Confirmation code input field not found within timeout. Waiting for standard login completion elements...")
                 try:
+                    # ログイン成功要素が表示されるまで待機
                     self.wait.until(
                         EC.presence_of_element_located((By.XPATH, '//div[@data-testid="tweetTextarea_0"] | //div[@aria-label="Home timeline"] | //a[@data-testid="AppTabBar_Home_Link"]'))
                     )
@@ -640,10 +683,20 @@ class TwitterBot:
                     login_successful = True
                 except TimeoutException:
                     logger.error("Timeout waiting for standard login completion elements.")
+                    # ログイン完了要素が見つからなかった場合もエラーとして扱う
+                    screenshot_path = self._save_screenshot("login_completion_timeout")
+                    error_info = {'url': self.driver.current_url if self.driver else "N/A", 'error': "Timeout waiting for standard login completion elements.", 'screenshot_path': screenshot_path}
+                    self._send_error_notification("Login Completion Timeout", error_info, self._collect_screenshots(screenshot_initial_load, screenshot_after_page_load, screenshot_after_username_input, screenshot_after_userid_input if 'screenshot_after_userid_input' in locals() else (screenshot_after_userid_check_skipped if 'screenshot_after_userid_check_skipped' in locals() else None), screenshot_before_password_wait, screenshot_before_password, screenshot_after_password, screenshot_before_login_click, screenshot_after_login_click, screenshot_path), "twitter_bot.log")
                     raise TimeoutException("Timeout waiting for standard login completion elements.")
+                except Exception as e:
+                    logger.error(f"Error waiting for login completion elements: {str(e)}")
+                    screenshot_path = self._save_screenshot("login_completion_error")
+                    error_info = {'url': self.driver.current_url if self.driver else "N/A", 'error': f"Error waiting for login completion elements: {str(e)}", 'screenshot_path': screenshot_path}
+                    self._send_error_notification("Login Completion Error", error_info, self._collect_screenshots(screenshot_initial_load, screenshot_after_page_load, screenshot_after_username_input, screenshot_after_userid_input if 'screenshot_after_userid_input' in locals() else (screenshot_after_userid_check_skipped if 'screenshot_after_userid_check_skipped' in locals() else None), screenshot_before_password_wait, screenshot_before_password, screenshot_after_password, screenshot_before_login_click, screenshot_after_login_click, screenshot_path), "twitter_bot.log")
+                    raise
 
             return login_successful
-
+            
         except Exception as e:
             logger.error(f"Login failed: {str(e)}")
             self._check_memory_usage()
@@ -652,7 +705,7 @@ class TwitterBot:
                 logger.info(f"Login error screenshot saved: {screenshot_path}")
             current_url = self.driver.current_url if self.driver else "N/A"
             logger.error(f"Login failed at URL: {current_url}")
-
+            
             error_info = {
                 'url': current_url,
                 'error': str(e),
@@ -661,6 +714,25 @@ class TwitterBot:
             self._send_error_notification("Login Failed", error_info, self._collect_screenshots(screenshot_initial_load, screenshot_after_page_load, screenshot_after_username_input, screenshot_after_userid_input if 'screenshot_after_userid_input' in locals() else (screenshot_after_userid_check_skipped if 'screenshot_after_userid_check_skipped' in locals() else None), screenshot_before_password_wait, screenshot_before_password, screenshot_after_password, screenshot_before_login_click, screenshot_after_login_click, screenshot_path), "twitter_bot.log")
 
             raise
+
+
+    def _simulate_human_like_movement(self, element):
+        """要素周辺へのスクロールとマウス移動をシミュレーション"""
+        try:
+            # 要素がビューポート内に確実に入るようにスクロール
+            self.driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", element)
+            time.sleep(random.uniform(0.5, 1.5)) # スクロール後の待機
+
+            # 要素の中央に向けてマウスを移動させるシミュレーション
+            actions = ActionChains(self.driver)
+            actions.move_to_element(element)
+            actions.perform()
+            time.sleep(random.uniform(0.5, 1.0)) # マウス移動後の待機
+
+        except Exception as e:
+            logger.warning(f"Failed to simulate human-like movement for element: {str(e)}")
+            # 移動シミュレーションは失敗しても処理は続行
+
 
     # デバッグ用：各ステップのスクリーンショットをメール送信するヘルパー関数を追加
     def _send_debug_screenshot_email(self, step_name: str, screenshot_paths: list[str]):
@@ -684,7 +756,7 @@ class TwitterBot:
     def _collect_screenshots(self, *args):
         """Noneでないスクリーンショットパスをリストにして返す"""
         return [path for path in args if path]
-
+            
     # エラー通知用のラッパーメソッド
     def _send_error_notification(self, error_type: str, error_info: Dict[str, Any], screenshot_paths: list[str], log_file_path: Optional[str] = None):
         """エラー通知メールを送信するためのラッパー"""
@@ -700,7 +772,7 @@ URL: {error_info.get('url', 'N/A')}
 """
         # 渡されたスクリーンショットパスをそのまま使用
         self._send_notification_email(subject, body, screenshot_paths, log_file_path)
-
+        
     # GmailからTwitter認証コードを取得する関数を追加
     def _get_twitter_confirmation_code(self) -> Optional[str]:
         """Gmailから最新のTwitter認証コードメールを取得し、コードを抽出する"""
@@ -821,7 +893,13 @@ URL: {error_info.get('url', 'N/A')}
             time.sleep(random.uniform(3, 7)) # ログイン後の静的待機をランダム化
 
             try:
+                # 投稿ボタンが表示されるまで待機
                 post_button = self.wait.until(EC.element_to_be_clickable((By.XPATH, '//a[@aria-label="Post"]')))
+                
+                # 人間らしい操作シミュレーション: スクロールとマウス移動
+                self._simulate_human_like_movement(post_button)
+                time.sleep(random.uniform(0.5, 1.5)) # 操作前の短い待機
+
                 post_button.click()
             except TimeoutException:
                 logger.error("Timeout waiting for tweet post button.")
@@ -848,8 +926,14 @@ URL: {error_info.get('url', 'N/A')}
             time.sleep(random.uniform(2, 4)) # モーダル表示の静的待機をランダム化
 
             try:
+                # ツイート入力エリアが表示されるまで待機
                 tweet_box = self.wait.until(EC.presence_of_element_located((By.XPATH, '//div[@data-testid="tweetTextarea_0"]')))
                 tweet_content = f"{title}\n{url}"
+                
+                # 人間らしい操作シミュレーション: スクロールとマウス移動
+                self._simulate_human_like_movement(tweet_box)
+                time.sleep(random.uniform(0.5, 1.5)) # 操作前の短い待機
+
                 # タイピングを人間らしくシミュレーション
                 actions = ActionChains(self.driver)
                 for char in tweet_content:
@@ -868,7 +952,7 @@ URL: {error_info.get('url', 'N/A')}
                 screenshot_path = self._save_screenshot("tweet_area_not_found")
                 error_info = {'url': self.driver.current_url if self.driver else "N/A", 'error': "Tweet text area not found.", 'screenshot_path': screenshot_path}
                 self._send_error_notification("Tweet Area Not Found", error_info, [screenshot_path] if screenshot_path else [], "twitter_bot.log")
-                raise NoSuchElementException("Tweet text area not found.")
+                raise NoSuchElementException("Tweet text Area Not Found.")
             except Exception as e:
                 logger.error(f"Error entering tweet content: {str(e)}")
                 screenshot_path = self._save_screenshot("tweet_content_error")
@@ -877,10 +961,15 @@ URL: {error_info.get('url', 'N/A')}
                 raise
 
             # 投稿ボタンのクリック
-            logger.info("Clicking post button...")
+            logger.info("Clicking post button...\n")
             try:
                 # ツイート作成モーダル内の投稿ボタンを対象とする
                 tweet_button = self.wait.until(EC.element_to_be_clickable((By.XPATH, '//div[@data-testid="tweetComposer"]//button[@data-testid="tweetButton"]')))
+                
+                # 人間らしい操作シミュレーション: スクロールとマウス移動
+                self._simulate_human_like_movement(tweet_button)
+                time.sleep(random.uniform(0.5, 1.5)) # 操作前の短い待機
+
                 tweet_button.click()
             except TimeoutException:
                 logger.error("Timeout waiting for final tweet button.")
@@ -905,18 +994,18 @@ URL: {error_info.get('url', 'N/A')}
             logger.info("Waiting for tweet completion...")
             time.sleep(random.uniform(5, 15)) # 投稿後の静的な待機をランダム化
             # TODO: ツイートが成功したことを示す要素や画面遷移を待つ条件を追加
-            logger.info("Tweet posting process finished (Success confirmation might be needed).")
-
+            logger.info("Tweet posting process finished (Success confirmation might be needed).\n")
+            
             # 正常終了時も通知メールを送信
             success_info = {
                  'url': self.driver.current_url if self.driver else "N/A",
                  'title': title,
                  'memory_usage': psutil.Process(os.getpid()).memory_percent()
             }
-            self._send_notification_email('Twitter Post Success', 'ツイート投稿が正常に完了しました。', [], "twitter_bot.log")
+            self._send_notification_email('Twitter Post Success', 'ツイート投稿が正常に完了しました。\n', [], "twitter_bot.log")
 
             return True
-
+            
         except Exception as e:
             logger.error(f"Failed to post tweet. Error: {str(e)}")
             self._check_memory_usage()
@@ -924,8 +1013,8 @@ URL: {error_info.get('url', 'N/A')}
             if screenshot_path:
                 logger.info(f"Error screenshot saved: {screenshot_path}")
             current_url = self.driver.current_url if self.driver else "N/A"
-            logger.error(f"Tweet post failed at URL: {current_url}")
-
+            logger.error(f"Tweet post failed at URL: {current_url}\n")
+            
             # 投稿失敗時のメール通知
             error_info = {
                 'url': current_url,
@@ -933,9 +1022,9 @@ URL: {error_info.get('url', 'N/A')}
                 'screenshot_path': screenshot_path
             }
             self._send_error_notification("Tweet Post Failed", error_info, [screenshot_path] if screenshot_path else [], "twitter_bot.log")
-
+            
             return False
-
+            
         finally:
             self.cleanup()
 
@@ -947,6 +1036,6 @@ if __name__ == "__main__":
     success = bot.post_tweet(test_title, test_url)
 
     if success:
-        logger.info("ツイート投稿処理が成功しました。")
+        logger.info("ツイート投稿処理が成功しました。\n")
     else:
-        logger.error("ツイート投稿処理が失敗しました。")
+        logger.error("ツイート投稿処理が失敗しました。\n")
