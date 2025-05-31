@@ -36,6 +36,7 @@ class NewsFetcher:
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
             }
+            logger.info(f"Fetching content from URL: {url}")
             response = requests.get(url, headers=headers, timeout=10)
             response.raise_for_status()
             
@@ -47,18 +48,53 @@ class NewsFetcher:
                 tag.decompose()
             
             # メインコンテンツを取得（サイトによって異なる可能性がある）
-            content = soup.find('article') or soup.find('main') or soup.find('div', class_=['content', 'article', 'post'])
+            content = None
+            content_selectors = [
+                'article',
+                'main',
+                'div.content',
+                'div.article',
+                'div.post',
+                'div.entry-content',
+                'div.story-body',
+                'div.article-body',
+                'div.article-content'
+            ]
+            
+            for selector in content_selectors:
+                content = soup.select_one(selector)
+                if content:
+                    logger.info(f"Found content using selector: {selector}")
+                    break
             
             if content:
                 # テキストを取得して整形
                 text = content.get_text(separator='\n', strip=True)
-                return text
+                if text:
+                    logger.info(f"Successfully extracted content from {url}")
+                    return text
+                else:
+                    logger.warning(f"Found content element but it was empty for {url}")
             else:
+                logger.warning(f"Could not find main content element for {url}")
                 # メインコンテンツが見つからない場合はbody全体を使用
-                return soup.body.get_text(separator='\n', strip=True) if soup.body else ""
+                if soup.body:
+                    text = soup.body.get_text(separator='\n', strip=True)
+                    if text:
+                        logger.info(f"Using body content as fallback for {url}")
+                        return text
+                    else:
+                        logger.warning(f"Body content was empty for {url}")
+                else:
+                    logger.warning(f"No body element found for {url}")
+            
+            return ""
                 
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Request error fetching article content from {url}: {str(e)}")
+            return ""
         except Exception as e:
-            logger.error(f"Error fetching article content from {url}: {str(e)}")
+            logger.error(f"Unexpected error fetching article content from {url}: {str(e)}")
             return ""
 
     def fetch_news(self, max_articles: Optional[int] = None) -> List[Dict[str, Any]]:
@@ -89,10 +125,14 @@ class NewsFetcher:
                         article_url = entry.link
                         article_content = self._fetch_article_content(article_url)
                         
+                        # コンテンツが空の場合はsummaryを使用
+                        if not article_content and 'summary' in entry:
+                            logger.info(f"Using RSS summary as fallback for {article_url}")
+                            article_content = entry.summary
+                        
                         article = {
                             "title": entry.title,
-#                            "content": article_content or entry.get("summary", ""),  # コンテンツ取得に失敗した場合はsummaryを使用
-                            "content": article_content,  # コンテンツ取得に失敗した場合はsummaryを使用
+                            "content": article_content,
                             "url": article_url,
                             "published": entry.get("published", datetime.now().isoformat()),
                             "source": url
