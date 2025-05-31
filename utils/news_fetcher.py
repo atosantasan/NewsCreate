@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 import requests
 from bs4 import BeautifulSoup
 import time
+from selenium.webdriver.common.by import By
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +133,7 @@ class NewsFetcher:
     def fetch_news(self, max_articles: Optional[int] = None) -> List[Dict[str, Any]]:
         """
         RSSフィードからニュース記事を取得する。
-        取得する記事の最大件数を指定できる。
+         取得する記事の最大件数を指定できる。
 
         Args:
             max_articles (Optional[int]): 取得する記事の最大件数。Noneの場合は全ての記事を取得。
@@ -141,7 +142,7 @@ class NewsFetcher:
             List[Dict[str, Any]]: 取得したニュース記事のリスト
         """
         articles = []
-        
+
         for url in self.rss_feeds:
             try:
                 logger.info(f"Fetching news from: {url}")
@@ -162,14 +163,16 @@ class NewsFetcher:
                             logger.info(f"Using RSS summary as fallback for {article_url}")
                             article_content = entry.summary
                         
-                        article = {
-                            "title": entry.title,
-                            "content": article_content,
-                            "url": article_url,
-                            "published": entry.get("published", datetime.now().isoformat()),
-                            "source": url
-                        }
-                        articles.append(article)
+                        # コンテンツがnullでない場合のみ追加
+                        if article_content:
+                            article = {
+                                "title": entry.title,
+                                "content": article_content,
+                                "url": article_url,
+                                "published": entry.get("published", datetime.now().isoformat()),
+                                "source": url
+                            }
+                            articles.append(article)
                         
                         # サーバーに負荷をかけないように少し待機
                         time.sleep(1)
@@ -182,14 +185,14 @@ class NewsFetcher:
                     except Exception as e:
                         logger.error(f"Error processing entry from {url}: {str(e)}")
                         continue
-                        
+
             except Exception as e:
                 logger.error(f"Error fetching feed from {url}: {str(e)}")
                 continue
-                
+
             # 取得件数が最大件数に達したら外側のフィードループも抜ける
             if max_articles is not None and len(articles) >= max_articles:
                 break # url ループを抜ける
-                
+
         logger.info(f"Successfully fetched {len(articles)} articles")
         return articles
