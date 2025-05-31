@@ -760,7 +760,10 @@ URL: {error_info.get('url', 'N/A')}
             self._setup_driver()
             logger.info("Driver setup complete in post_tweet")
 
-            self._login()
+            # ログインを試行し、成功した場合のみ以降の処理に進む
+            if not self._login():
+                logger.error("Login failed. Aborting tweet posting process.")
+                return False # ログイン失敗時はFalseを返して終了
 
             # ツイート作成画面を開く
             logger.info("Opening tweet composition screen...")
