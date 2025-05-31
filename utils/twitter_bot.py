@@ -253,6 +253,19 @@ class TwitterBot:
             options.add_argument("--password-store=basic")
             options.add_argument("--use-mock-keychain")
             
+            # さらなるステルス対策オプション
+            options.add_argument("--disable-features=ChromeWhatsNewUI") # Chromeの新しいUI機能を無効化
+            options.add_argument("--disable-features=ChromeMigrationWindow") # Chromeの移行ウィンドウを無効化
+            options.add_argument("--disable-translate") # 翻訳機能を無効化
+            options.add_argument("--hide-scrollbars") # スクロールバーを隠す
+            options.add_argument("--mute-audio") # 音声をミュート
+            options.add_argument("--no-default-browser-check") # デフォルトブラウザチェックを無効化
+            options.add_argument("--disable-component-update") # コンポーネントアップデートを無効化
+            options.add_argument("--disable-speech-api") # 音声APIを無効化
+            options.add_argument("--disable-webrtc-event-logging") # WebRTCイベントログを無効化
+            options.add_argument("--disable-webrtc-multiple-routes") # WebRTCの複数ルートを無効化
+            options.add_argument("--disable-webrtc-stats-gathering") # WebRTC統計情報収集を無効化
+            
             # メモリ制限の設定
             options.add_argument("--js-flags=--max-old-space-size=256")
             options.add_argument("--memory-pressure-off")
@@ -454,6 +467,32 @@ class TwitterBot:
                 screenshot_path = self._save_screenshot("error_modal_handling_error")
                 error_info = {'url': self.driver.current_url if self.driver else "N/A", 'error': f"Error handling modal: {str(e)}", 'screenshot_path': screenshot_path}
                 self._send_error_notification("Error Modal Handling Failed", error_info, self._collect_screenshots(screenshot_path), "twitter_bot.log")
+
+            # エラーモーダル処理後、現在のURLを確認
+            current_url_after_modal = self.driver.current_url if self.driver else "N/A"
+            logger.info(f"Current URL after error modal check: {current_url_after_modal}")
+
+            # トップページに戻されたかチェックし、その場合は早期終了
+            if current_url_after_modal.rstrip('/') == 'https://x.com': # スラッシュの有無を考慮
+                logger.error("Redirected to Twitter homepage after username input. Login failed, likely detected as bot.")
+                # この時点のスクリーンショットとページソースをログに出力してデバッグに役立てる
+                screenshot_path = self._save_screenshot("redirect_to_homepage")
+                page_source = ""
+                try:
+                    page_source = self.driver.page_source
+                except Exception as source_e:
+                    logger.error(f"Failed to get page source after redirect: {str(source_e)}")
+
+                logger.error(f"Page Source after redirect:\n{page_source[:1000]}...") # 長すぎないように一部を出力
+
+                error_info = {
+                    'url': current_url_after_modal,
+                    'error': "Redirected to homepage after username/ID input. Likely bot detection.",
+                    'screenshot_path': screenshot_path
+                }
+                # これまでのスクリーンショットと合わせてエラー通知
+                self._send_error_notification("Login Redirect Failed", error_info, self._collect_screenshots(screenshot_initial_load, screenshot_after_page_load, screenshot_after_username_input, screenshot_after_userid_input if 'screenshot_after_userid_input' in locals() else (screenshot_after_userid_check_skipped if 'screenshot_after_userid_check_skipped' in locals() else None), screenshot_before_password_wait, screenshot_path), "twitter_bot.log")
+                return False # ログイン失敗を示すFalseを返す
 
             screenshot_before_password_wait = self._save_screenshot("before_password_wait")
             logger.info(f"Screenshot saved before password input field wait: {screenshot_before_password_wait}")
